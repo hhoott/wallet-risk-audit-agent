@@ -1,0 +1,35 @@
+{
+  "name": "wallet-risk-audit-agent",
+  "version": "0.1.0",
+  "description": "钱包风险体检 Agent — 只读链上安全分析服务，作为 CAP Provider 通过 CROO Agent Protocol 提供按次付费的钱包安全审计",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
+    "start": "node --env-file-if-exists=.env dist/main.js",
+    "dev": "tsc && node --env-file-if-exists=.env dist/main.js",
+    "requester": "node --env-file-if-exists=.env dist/examples/requester.js"
+  },
+  "dependencies": {
+    "@croo-network/sdk": "^0.2.1",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.17.0",
+    "fast-check": "^3.23.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

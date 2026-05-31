@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+.DS_Store
+coverage/
+
+# Browser-saved web page assets (reference HTML kept, its asset bundle excluded)
+docs/*_files/
