@@ -7,10 +7,20 @@ import {
 
 describe("portal config", () => {
   it("defaults to free mode so an unfunded requester can still continue", () => {
-    const cfg = loadPortalConfig({});
+    const cfg = loadPortalConfig({ CROO_SDK_KEY: "provider-key" });
 
     expect(cfg.paymentMode).toBe("free");
     expect(cfg.crooSdkKey).toBe("");
+  });
+
+  it("uses an explicit portal requester key in free mode when one is provided", () => {
+    const cfg = loadPortalConfig({
+      CROO_SDK_KEY: "provider-key",
+      PORTAL_CROO_SDK_KEY: "requester-key",
+    });
+
+    expect(cfg.paymentMode).toBe("free");
+    expect(cfg.crooSdkKey).toBe("requester-key");
   });
 
   it("requires requester credentials only in explicit paid mode", () => {

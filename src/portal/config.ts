@@ -71,9 +71,10 @@ function parsePort(raw: string | undefined, fallback: number): number {
 
 /**
  * Load the portal configuration from environment variables. The portal's Requester key
- * (PORTAL_CROO_SDK_KEY) is required only in explicit "paid" mode; it falls back to CROO_SDK_KEY for
- * a single-key local demo. In default "free" mode the key is optional (the portal can fall back to a
- * local audit), so a missing key is tolerated and left blank.
+ * (PORTAL_CROO_SDK_KEY) is required only in explicit "paid" mode, where it can fall back to
+ * CROO_SDK_KEY for older single-key setups. In default "free" mode the key is optional and does NOT
+ * fall back to the Provider's CROO_SDK_KEY; otherwise running Provider + Portal together can create
+ * two WebSockets for the same key and trigger CROO's duplicate-key policy.
  */
 export function loadPortalConfig(
   env: NodeJS.ProcessEnv = process.env,
@@ -85,7 +86,8 @@ export function loadPortalConfig(
       ? "paid"
       : "free";
 
-  const crooSdkKey = env.PORTAL_CROO_SDK_KEY ?? env.CROO_SDK_KEY ?? "";
+  const crooSdkKey =
+    env.PORTAL_CROO_SDK_KEY ?? (paymentMode === "paid" ? env.CROO_SDK_KEY : "") ?? "";
   if (crooSdkKey.trim() === "" && paymentMode === "paid") {
     throw new MissingPortalConfigError(
       "Missing required environment variable: PORTAL_CROO_SDK_KEY (or CROO_SDK_KEY). " +

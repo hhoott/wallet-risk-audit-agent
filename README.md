@@ -190,7 +190,7 @@ Endpoints: `GET /` (the UI), `GET /api/tiers` (pricing + availability), `POST /a
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORTAL_PAYMENT_MODE` | `free` | `free` attempts the CAP flow first, then falls back to a local audit if payment/delivery cannot complete; `paid` requires strict settlement. |
-| `PORTAL_CROO_SDK_KEY` | falls back to `CROO_SDK_KEY` | The portal Requester's own funded Agent key (its AA wallet pays for orders). |
+| `PORTAL_CROO_SDK_KEY` | optional in `free`; falls back to `CROO_SDK_KEY` only in `paid` | The portal Requester's own funded Agent key (its AA wallet pays for orders). Use a different key from the Provider. |
 | `PORTAL_PORT` | `8787` | HTTP port the portal listens on. |
 | `PORTAL_ORDER_TIMEOUT_MS` | `120000` | Timeout for the full negotiate → pay → deliver round trip. |
 
@@ -214,8 +214,10 @@ that report instead of failing. Behavior worth knowing:
 - Every response carries `paid: true | false` (and a `fallbackReason` when it fell back), so you
   always know whether a result came from a settled CAP order or a free local audit. The UI shows a
   "Paid · settled on Base" vs "Free local audit (unpaid)" chip accordingly.
-- `PORTAL_CROO_SDK_KEY` / `CROO_SDK_KEY` is **not required** in free mode, all tiers become bookable
-  even without `SERVICE_ID_*`, and a failed CAP WebSocket connection at startup is tolerated.
+- `PORTAL_CROO_SDK_KEY` is **not required** in free mode, all tiers become bookable even without
+  `SERVICE_ID_*`, and a failed CAP WebSocket connection at startup is tolerated. Free mode does not
+  reuse the Provider's `CROO_SDK_KEY`, avoiding CROO's duplicate-key WebSocket policy when Provider
+  and Portal run together.
 - The local fallback reuses the exact same orchestrator and audit logic the Provider runs on a paid
   order, so it stays strictly read-only.
 
