@@ -166,7 +166,7 @@ describe("portal server — static + tiers", () => {
   it("GET / serves the HTML shell", async () => {
     const res = await fetch(`${srv.base}/`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("Wallet Risk Audit");
+    expect(await res.text()).toContain("On-chain Risk Audit");
   });
 
   it("404 for unknown paths", async () => {

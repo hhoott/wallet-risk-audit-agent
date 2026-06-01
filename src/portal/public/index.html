@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Wallet Risk Audit — On-chain Security Check-up</title>
+    <title>On-chain Risk Audit — Wallets, Tokens, NFTs & Contracts</title>
     <meta
       name="description"
-      content="A read-only on-chain wallet security audit. Get a Wallet Health Score, approval risks, and revocation advice through CAP with a demo fallback."
+      content="A read-only on-chain risk audit agent. Paste any Ethereum address — wallet, token, NFT, or contract — and get a type-aware security report with an AI risk read-out, paid per call over CAP."
     />
     <link rel="stylesheet" href="/assets/styles.css" />
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
@@ -15,11 +15,12 @@
     <!-- Navigation: translucent dark glass, sticky -->
     <nav class="nav" aria-label="Primary">
       <div class="nav__inner">
-        <a class="nav__brand" href="#top" aria-label="Wallet Risk Audit home">
+        <a class="nav__brand" href="#top" aria-label="On-chain Risk Audit home">
           <span class="nav__shield" aria-hidden="true">◇</span>
-          <span class="nav__brandtext">Wallet Risk Audit</span>
+          <span class="nav__brandtext">On-chain Risk Audit</span>
         </a>
         <div class="nav__links">
+          <a href="#what">What it checks</a>
           <a href="#tiers">Pricing</a>
           <a href="#how">How it works</a>
           <a href="#order">Run a check</a>
@@ -33,24 +34,59 @@
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero__content">
           <p class="hero__eyebrow">CROO Agent · DeFi / On-chain Ops</p>
-          <h1 id="hero-title" class="hero__title">Know your wallet's risk.</h1>
+          <h1 id="hero-title" class="hero__title">Check any address before you trust it.</h1>
           <p class="hero__subtitle">
-            A read-only security check-up for any Ethereum wallet. Health score, approval risks,
-            and what to revoke — via CAP payment when available, with demo fallback.
+            A read-only risk audit for any Ethereum address. Paste a wallet, token, NFT, or
+            contract — the agent detects what it is and runs the right checks, then explains the
+            risk in plain language.
           </p>
           <div class="hero__actions">
             <a class="btn btn--primary" href="#order">Run a check</a>
-            <a class="btn btn--pill-dark" href="#how">How it works ›</a>
+            <a class="btn btn--pill-dark" href="#what">What it checks ›</a>
           </div>
           <p class="hero__readonly">Read-only · never touches your private keys · never sends a transaction.</p>
         </div>
       </section>
 
-      <!-- Pricing tiers: light section -->
-      <section class="section section--light" id="tiers" aria-labelledby="tiers-title">
+      <!-- What it checks: light section, type-aware scope -->
+      <section class="section section--light" id="what" aria-labelledby="what-title">
         <div class="container">
-          <h2 class="section__title" id="tiers-title">Pick a check-up.</h2>
-          <p class="section__lead">CAP orders settle in USDC on Base; demo mode continues locally if payment is unavailable.</p>
+          <h2 class="section__title" id="what-title">One address in. The right audit out.</h2>
+          <p class="section__lead">
+            Submit any address and the agent identifies its type, then routes to a tailored
+            analysis — no need to pick what you want.
+          </p>
+          <div class="scope">
+            <div class="scope__card">
+              <span class="scope__icon" aria-hidden="true">👛</span>
+              <h3 class="scope__title">Wallets (EOA)</h3>
+              <p class="scope__body">Approvals & unlimited approvals, risky contracts, asset spread, failed/abnormal txs, and a Health Score.</p>
+            </div>
+            <div class="scope__card">
+              <span class="scope__icon" aria-hidden="true">🪙</span>
+              <h3 class="scope__title">Tokens (ERC-20)</h3>
+              <p class="scope__body">Owner privileges, mint/inflation, pausable transfers, and blacklist functions — honeypot-style signals.</p>
+            </div>
+            <div class="scope__card">
+              <span class="scope__icon" aria-hidden="true">🖼️</span>
+              <h3 class="scope__title">NFTs (721/1155)</h3>
+              <p class="scope__body">Collection legitimacy — official vs. copycat — and contract-level risks before you mint or buy.</p>
+            </div>
+            <div class="scope__card">
+              <span class="scope__icon" aria-hidden="true">📄</span>
+              <h3 class="scope__title">Contracts & counterparties</h3>
+              <p class="scope__body">Verification, age, activity, owner controls, and curated allow/deny lists before you approve or send.</p>
+            </div>
+          </div>
+          <p class="scope__note">Higher tiers add an AI read-out: what the findings mean and what to do next.</p>
+        </div>
+      </section>
+
+      <!-- Pricing tiers: dark section -->
+      <section class="section section--dark" id="tiers" aria-labelledby="tiers-title">
+        <div class="container">
+          <h2 class="section__title section__title--light" id="tiers-title">Pick a tier.</h2>
+          <p class="section__lead section__lead--light">Pay per call in USDC, settled on Base over the CROO Agent Protocol.</p>
           <div class="tiers" id="tiers-grid" role="list">
             <!-- Tier cards are rendered by app.js from /api/tiers -->
             <p class="tiers__loading" id="tiers-loading">Loading tiers…</p>
@@ -58,12 +94,12 @@
         </div>
       </section>
 
-      <!-- Order form: dark section -->
-      <section class="section section--dark" id="order" aria-labelledby="order-title">
+      <!-- Order form: light section -->
+      <section class="section section--light" id="order" aria-labelledby="order-title">
         <div class="container container--narrow">
-          <h2 class="section__title section__title--light">Run a check-up.</h2>
-          <p class="section__lead section__lead--light">
-            Enter a wallet address, choose a tier, and we'll try the normal CAP order flow first.
+          <h2 class="section__title">Run a check.</h2>
+          <p class="section__lead">
+            Paste an address, pick a tier, and the agent figures out the rest.
           </p>
 
           <div class="mode-banner" id="mode-banner" hidden role="status">
@@ -71,25 +107,25 @@
             <span><strong>Demo free mode.</strong> Payment failures fall back to a local read-only audit. Set paid mode for production.</span>
           </div>
 
-          <form class="order" id="order-form" novalidate>
+          <form class="order order--light" id="order-form" novalidate>
             <div class="field">
-              <label class="field__label" for="tier-select">Tier</label>
+              <label class="field__label field__label--dark" for="tier-select">Tier</label>
               <select class="field__input" id="tier-select" name="tier" required></select>
             </div>
 
             <div class="field">
-              <label class="field__label" for="wallet-input" id="wallet-label">Wallet address</label>
+              <label class="field__label field__label--dark" for="wallet-input" id="wallet-label">Address</label>
               <textarea
                 class="field__input field__input--area"
                 id="wallet-input"
                 name="wallet"
                 rows="1"
-                placeholder="0x…"
+                placeholder="0x… (wallet, token, NFT, or contract)"
                 autocomplete="off"
                 spellcheck="false"
                 required
               ></textarea>
-              <p class="field__hint" id="wallet-hint">A single Ethereum address (0x + 40 hex).</p>
+              <p class="field__hint" id="wallet-hint">Any Ethereum address (0x + 40 hex).</p>
             </div>
 
             <button class="btn btn--primary btn--block" type="submit" id="order-submit">
@@ -105,38 +141,38 @@
         </div>
       </section>
 
-      <!-- Report output: light section (hidden until a report arrives) -->
-      <section class="section section--light" id="report-section" hidden aria-labelledby="report-title">
+      <!-- Report output: dark section (hidden until a report arrives) -->
+      <section class="section section--dark" id="report-section" hidden aria-labelledby="report-title">
         <div class="container">
-          <h2 class="section__title" id="report-title">Your report.</h2>
+          <h2 class="section__title section__title--light" id="report-title">Your report.</h2>
           <div class="report" id="report"></div>
         </div>
       </section>
 
-      <!-- How it works: dark section -->
-      <section class="section section--dark" id="how" aria-labelledby="how-title">
+      <!-- How it works: light section -->
+      <section class="section section--light" id="how" aria-labelledby="how-title">
         <div class="container">
-          <h2 class="section__title section__title--light">How it works.</h2>
+          <h2 class="section__title" id="how-title">How it works.</h2>
           <ol class="steps">
-            <li class="step">
+            <li class="step step--light">
               <span class="step__num">1</span>
-              <h3 class="step__title">You place an order</h3>
-              <p class="step__body">Enter a wallet and pick a tier. The portal negotiates a CAP order with the audit agent.</p>
+              <h3 class="step__title">You submit an address</h3>
+              <p class="step__body">Paste any Ethereum address and pick a tier. Hire over CAP, or call the HTTP API / A2A.</p>
             </li>
-            <li class="step">
+            <li class="step step--light">
               <span class="step__num">2</span>
-              <h3 class="step__title">Payment is attempted</h3>
-              <p class="step__body">If USDC escrow succeeds, CAP settlement is recorded; in demo mode payment failure falls back locally.</p>
+              <h3 class="step__title">Pay per call in USDC</h3>
+              <p class="step__body">Settled on Base via CAP (or MetaMask). In demo mode, an unpaid call still returns a local report.</p>
             </li>
-            <li class="step">
+            <li class="step step--light">
               <span class="step__num">3</span>
-              <h3 class="step__title">The agent audits, read-only</h3>
-              <p class="step__body">It reads public Ethereum data — approvals, contracts, assets, transactions — and never touches keys.</p>
+              <h3 class="step__title">The agent detects & audits</h3>
+              <p class="step__body">It identifies the address type and runs the matching read-only checks on public Ethereum data.</p>
             </li>
-            <li class="step">
+            <li class="step step--light">
               <span class="step__num">4</span>
-              <h3 class="step__title">You get a report</h3>
-              <p class="step__body">A health score, risk findings, and revocation links you confirm in your own wallet.</p>
+              <h3 class="step__title">You get a clear verdict</h3>
+              <p class="step__body">A risk verdict, the findings, an optional AI explanation, and revocation links you confirm yourself.</p>
             </li>
           </ol>
         </div>
