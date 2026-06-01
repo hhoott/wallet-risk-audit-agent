@@ -189,7 +189,7 @@ export function extractTxHash(result: unknown): string {
 // ── Deliverable assembly ─────────────────────────────────────────────────────────────────
 
 /** Normalized audit output ready to be turned into a CAP deliverable. */
-interface AuditDeliverable {
+export interface AuditDeliverable {
   /** Machine-readable structured report (single wallet) or multi-wallet summary. */
   structured: AuditReportStructured | MultiWalletReport;
   /** Human-readable Markdown report. */
@@ -212,7 +212,7 @@ function renderMultiWalletMarkdown(perWallet: PerWalletAuditResult[]): string {
  * Run the audit for a paid order: MULTI fans out across wallets, every other tier audits the first
  * wallet. Returns the structured + human-readable report and the flattened module statuses.
  */
-async function runAudit(
+export async function runAudit(
   orchestrator: AuditRunner,
   tier: Tier,
   addresses: Address[],

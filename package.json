@@ -8,15 +8,17 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-portal-assets.mjs",
     "test": "vitest --run",
     "test:watch": "vitest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
     "start": "node --env-file-if-exists=.env dist/main.js",
-    "dev": "tsc && node --env-file-if-exists=.env dist/main.js",
-    "requester": "node --env-file-if-exists=.env dist/examples/requester.js"
+    "dev": "npm run build && node --env-file-if-exists=.env dist/main.js",
+    "requester": "node --env-file-if-exists=.env dist/examples/requester.js",
+    "portal": "node --env-file-if-exists=.env dist/portal/main.js",
+    "portal:dev": "npm run build && node --env-file-if-exists=.env dist/portal/main.js"
   },
   "dependencies": {
     "@croo-network/sdk": "^0.2.1",

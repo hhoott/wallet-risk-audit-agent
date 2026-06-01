@@ -155,6 +155,76 @@ The example Requester (`src/examples/requester.ts`) demonstrates the other side 
    (`AuditReportStructured` / `MultiWalletReport`), `deliverableText` is a human-readable Markdown
    report. Both carry a `schemaVersion` and a `riskLevelSummary`.
 
+## Ordering portal (web UI for phone + desktop)
+
+The repo includes a responsive ordering portal so humans can place orders from a browser without
+writing any CAP code. It follows an Apple-inspired design system (`docs/DESIGN.md`).
+
+```
+src/portal/
+  cap-requester.ts   Portal-side CAP Requester: negotiate -> pay -> deliver, end to end
+  config.ts          Portal config (its own funded Requester key + target Service_IDs)
+  server.ts          Framework-free HTTP server (static SPA + JSON API)
+  main.ts            Runnable portal entrypoint (buildPortal / main)
+  public/            The responsive single-page UI (index.html, styles.css, app.js)
+```
+
+How it works (the **managed-requester** model): the portal backend is itself a registered CAP
+**Requester**. When a user submits a wallet + tier, the backend runs the full Requester flow against
+your live Provider — `negotiateOrder` -> `payOrder` (USDC on Base) -> `getDelivery` — and renders the
+returned structured report. All audit work stays in the Provider; the portal only places and pays
+for orders.
+
+```bash
+# the audit Provider must be running and its Services configured (so the portal can hire it)
+cp .env.example .env        # set PORTAL_CROO_SDK_KEY (a funded Requester) + SERVICE_ID_*
+npm run build
+npm run portal              # serves http://localhost:8787 (auto-loads .env)
+```
+
+Endpoints: `GET /` (the UI), `GET /api/tiers` (pricing + availability), `POST /api/orders`
+(`{ tier, walletAddress | walletAddresses }` → the report), `GET /api/health`.
+
+### Portal environment variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PORTAL_PAYMENT_MODE` | `paid` | `paid` requires a settled CAP order; `free` falls back to a local audit (dev/testing). |
+| `PORTAL_CROO_SDK_KEY` | falls back to `CROO_SDK_KEY` | The portal Requester's own funded Agent key (its AA wallet pays for orders). |
+| `PORTAL_PORT` | `8787` | HTTP port the portal listens on. |
+| `PORTAL_ORDER_TIMEOUT_MS` | `120000` | Timeout for the full negotiate → pay → deliver round trip. |
+
+The portal reuses `SERVICE_ID_QUICK` / `SERVICE_ID_FULL` / `SERVICE_ID_MULTI` to know which tiers it
+can hire.
+
+### Free mode (development / testing)
+
+Set `PORTAL_PAYMENT_MODE=free` to develop and test the full UX without a funded Requester wallet:
+
+```bash
+PORTAL_PAYMENT_MODE=free npm run portal
+```
+
+In free mode the portal still **attempts the full paid CAP flow first**. When it cannot complete —
+payment fails, the negotiation/order is rejected or expires, the request times out, or a tier has no
+configured `Service_ID` — it falls back to running the **same read-only audit locally** and returns
+that report instead of failing. Behavior worth knowing:
+
+- Every response carries `paid: true | false` (and a `fallbackReason` when it fell back), so you
+  always know whether a result came from a settled CAP order or a free local audit. The UI shows a
+  "Paid · settled on Base" vs "Free local audit (unpaid)" chip accordingly.
+- `PORTAL_CROO_SDK_KEY` / `CROO_SDK_KEY` is **not required** in free mode, all tiers become bookable
+  even without `SERVICE_ID_*`, and a failed CAP WebSocket connection at startup is tolerated.
+- The local fallback reuses the exact same orchestrator and audit logic the Provider runs on a paid
+  order, so it stays strictly read-only.
+
+> **Free mode bypasses paid settlement and must NEVER be used in production.** The default is `paid`;
+> the active mode is logged at startup.
+
+> **Security:** the portal pays real USDC per order and ships with **no authentication or rate
+> limiting**. Keep it on localhost or put it behind your own auth — do not expose it to the public
+> internet as-is. This is logged at startup.
+
 ## Testing & correctness
 
 The core logic is verified with **property-based testing** (fast-check, ≥100 runs per property) in

@@ -5,6 +5,7 @@ dist/
 .env.local
 .DS_Store
 coverage/
+.vscode/
 
 # Browser-saved web page assets (reference HTML kept, its asset bundle excluded)
 docs/*_files/
