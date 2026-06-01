@@ -81,7 +81,7 @@ const OWNER_ABI = parseAbi([
 ]);
 
 /** Default public RPC used only when no RPC URL is injected (keyless, best-effort). */
-export const DEFAULT_ETH_RPC_URL = "https://cloudflare-eth.com";
+export const DEFAULT_ETH_RPC_URL = "https://ethereum-rpc.publicnode.com";
 
 /** Default Etherscan v2 API base URL. */
 export const DEFAULT_ETHERSCAN_BASE_URL = "https://api.etherscan.io/v2/api";
@@ -98,6 +98,24 @@ type Hex = `0x${string}`;
 /** Narrow a plain string to viem's hex-literal type at a viem call boundary. */
 function hx(value: string): Hex {
   return value as Hex;
+}
+
+/**
+ * Whether on-chain bytecode is an EIP-7702 delegation indicator (`0xef0100` + a 20-byte address).
+ * Such an account is still an EOA (a wallet) that has delegated its code to a contract; it must NOT
+ * be classified as a contract. Returns false for normal contract bytecode and for empty code.
+ */
+export function isEip7702Delegation(code: string | undefined): boolean {
+  if (typeof code !== "string") return false;
+  const lower = code.toLowerCase();
+  // 0x (2) + ef0100 (6) + 40 hex (20-byte address) = 48 chars total.
+  return lower.startsWith("0xef0100") && lower.length === 48;
+}
+
+/** Whether bytecode indicates a real contract (non-empty AND not an EIP-7702 delegation). */
+export function isContractCode(code: string | undefined): boolean {
+  if (code === undefined || code === "0x" || code === "0x0") return false;
+  return !isEip7702Delegation(code);
 }
 
 // ── Etherscan row shapes (subset of fields we consume) ──────────────────────────────────────
@@ -522,9 +540,10 @@ export class EtherscanChainDataSource implements ChainDataSource {
   async getContractMeta(contract: Address): Promise<ContractMeta> {
     const addr = this.normalize(contract);
 
-    // isContract: getCode returns non-empty bytecode for contracts (read-only).
+    // isContract: getCode returns non-empty bytecode for contracts (read-only). An EIP-7702
+    // delegation indicator (0xef0100 + address) is NOT a contract — it is a delegating EOA.
     const code = await this.run(() => this.client.getCode({ address: addr }), "viem.getCode");
-    const isContract = code !== undefined && code !== "0x" && code !== "0x0";
+    const isContract = isContractCode(code);
 
     // Verified source via Etherscan getsourcecode.
     let verified = false;
@@ -575,8 +594,9 @@ export class EtherscanChainDataSource implements ChainDataSource {
   }
 
   /**
-   * Detect the on-chain type of an address (read-only): EOA (no bytecode), then ERC-721 / ERC-1155
-   * via ERC-165 supportsInterface, then ERC-20 via a successful decimals() read, else CONTRACT.
+   * Detect the on-chain type of an address (read-only): EOA (no bytecode, or an EIP-7702 delegating
+   * wallet), then ERC-721 / ERC-1155 via ERC-165 supportsInterface, then ERC-20 via a successful
+   * decimals() read, else CONTRACT.
    */
   async detectAddressType(address: Address): Promise<AddressType> {
     const addr = this.normalize(address);
@@ -586,8 +606,8 @@ export class EtherscanChainDataSource implements ChainDataSource {
     } catch {
       return "UNKNOWN";
     }
-    const isContract = code !== undefined && code !== "0x" && code !== "0x0";
-    if (!isContract) return "EOA";
+    // No bytecode, or an EIP-7702 delegation indicator → still an externally-owned wallet.
+    if (!isContractCode(code)) return "EOA";
 
     // ERC-165 interface probes (NFTs).
     if (await this.supportsInterface(addr, ERC721_INTERFACE_ID)) return "ERC721";

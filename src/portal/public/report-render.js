@@ -1,6 +1,16 @@
 // Shared report renderer (ES module) used by both the main page (app.js) and the standalone
 // result page (report.js). Self-contained: it carries its own small DOM helpers so it has no
 // dependency on app.js. The input `data` is the JSON returned by POST /api/orders.
+//
+// Layout is ADDRESS-TYPE-FIRST: the audited address's detected type leads the report, and each
+// type renders a tailored structure:
+//   - EOA      → wallet health + annotated transaction records (each counterparty's situation) +
+//                (MULTI) a deeper look at the wallet's top counterparties.
+//   - ERC20    → token-safety signals + (MULTI) the token owner's own risk profile.
+//   - ERC721 / ERC1155 → collection legitimacy.
+//   - CONTRACT → protocol legitimacy.
+// The deterministic wallet report (approvals, revoke advice, etc.) is rendered beneath, and the
+// optional AI insight is strictly additive.
 
 /** Create an element with optional class, text, html, and attributes. */
 function h(tag, opts = {}) {
@@ -27,6 +37,15 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+/** Format a UTC ISO timestamp as a short, readable date (YYYY-MM-DD HH:MM UTC). */
+function shortDate(iso) {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const d = new Date(t);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+}
+
 /** Human-friendly grade label. */
 function gradeLabel(grade) {
   const map = { EXCELLENT: "Excellent", GOOD: "Good", FAIR: "Fair", POOR: "Poor" };
@@ -43,6 +62,37 @@ function prettyCategory(c) {
   return map[c] ?? c ?? "Risk";
 }
 
+/** Emoji-ish icon per address type (kept as text for zero-asset simplicity). */
+function typeIcon(t) {
+  const map = { EOA: "👛", ERC20: "🪙", ERC721: "🖼️", ERC1155: "🧩", CONTRACT: "📄", UNKNOWN: "❔" };
+  return map[t] ?? "❔";
+}
+
+/** Human label for an address type. */
+function typeLabel(t) {
+  const map = {
+    EOA: "Wallet (EOA)",
+    ERC20: "ERC-20 token",
+    ERC721: "ERC-721 NFT",
+    ERC1155: "ERC-1155 NFT",
+    CONTRACT: "Smart contract",
+    UNKNOWN: "Unknown type",
+  };
+  return map[t] ?? t;
+}
+
+/** Human label for a verdict enum. */
+function verdictLabel(v) {
+  const map = {
+    OFFICIAL: "Official / known",
+    LIKELY_SAFE: "Likely safe",
+    CAUTION: "Caution",
+    DANGEROUS: "Dangerous",
+    UNKNOWN: "Unknown",
+  };
+  return map[v] ?? v;
+}
+
 /** A single stat cell. */
 function stat(num, label) {
   const el = h("div", { class: "stat" });
@@ -50,6 +100,211 @@ function stat(num, label) {
   el.appendChild(h("span", { class: "stat__label", text: label }));
   return el;
 }
+
+// ── Address-type hero (the top, type-first banner) ────────────────────────────────────────
+
+/**
+ * Render the type-first hero for an audited address: a big type badge + verdict + label. This is
+ * the FIRST thing the user sees and determines how the rest of the report reads.
+ */
+function renderTypeHero(intel) {
+  const type = intel?.type ?? "UNKNOWN";
+  const verdict = intel?.verdict ?? "UNKNOWN";
+  const hero = h("div", { class: `typehero typehero--${type}` });
+
+  const icon = h("div", { class: "typehero__icon", text: typeIcon(type), attrs: { "aria-hidden": "true" } });
+  hero.appendChild(icon);
+
+  const body = h("div", { class: "typehero__body" });
+  body.appendChild(h("p", { class: "typehero__eyebrow", text: "Detected address type" }));
+  body.appendChild(h("h2", { class: "typehero__type", text: typeLabel(type) }));
+  body.appendChild(h("p", { class: "typehero__addr", text: intel?.address ?? "" }));
+
+  const tags = h("div", { class: "typehero__tags" });
+  tags.appendChild(h("span", { class: `vetverdict vetverdict--${verdict}`, text: verdictLabel(verdict) }));
+  if (intel?.label) tags.appendChild(h("span", { class: "intel__label", text: intel.label }));
+  if (intel?.official) tags.appendChild(h("span", { class: "chip chip--paid", text: "Official" }));
+  if (intel?.blacklisted) tags.appendChild(h("span", { class: "badge badge--CRITICAL", text: "Blacklisted" }));
+  body.appendChild(tags);
+  hero.appendChild(body);
+
+  return hero;
+}
+
+/** Render the reasons list backing a verdict. */
+function renderReasons(reasons) {
+  if (!Array.isArray(reasons) || reasons.length === 0) return null;
+  const card = h("div", { class: "report__card" });
+  card.appendChild(h("h3", { text: "Why this verdict" }));
+  const ul = h("ul", { class: "vetresult__reasons" });
+  for (const reason of reasons.slice(0, 8)) ul.appendChild(h("li", { text: reason }));
+  card.appendChild(ul);
+  return card;
+}
+
+/** Render token-security signals (ERC-20) as a chip grid. */
+function renderTokenCard(token) {
+  const card = h("div", { class: "report__card" });
+  card.appendChild(h("h3", { text: "Token safety signals" }));
+
+  const meta = h("div", { class: "intel__chips" });
+  if (token.symbol || token.name) {
+    meta.appendChild(h("span", { class: "intel__chip", text: `${token.symbol ?? "?"}${token.name ? ` · ${token.name}` : ""}` }));
+  }
+  if (token.decimals !== null && token.decimals !== undefined) {
+    meta.appendChild(h("span", { class: "intel__chip", text: `${token.decimals} decimals` }));
+  }
+  if (token.hasOwner && token.owner) {
+    meta.appendChild(h("span", { class: "intel__chip", text: `owner ${shortAddr(token.owner)}` }));
+  }
+  card.appendChild(meta);
+
+  const danger = [
+    token.hasOwner ? "owner-controlled" : null,
+    token.mintable ? "mintable (inflation risk)" : null,
+    token.pausable ? "pausable transfers" : null,
+    token.hasBlacklist ? "address blacklist" : null,
+  ].filter(Boolean);
+  const chips = h("div", { class: "intel__chips" });
+  if (danger.length === 0) {
+    chips.appendChild(h("span", { class: "intel__chip intel__chip--ok", text: "No dangerous functions detected" }));
+  } else {
+    for (const d of danger) chips.appendChild(h("span", { class: "intel__chip intel__chip--warn", text: d }));
+  }
+  card.appendChild(chips);
+  return card;
+}
+
+// ── EOA wallet: annotated transaction records ──────────────────────────────────────────────
+
+/** Pretty label + class for a counterparty flag. */
+function flagChip(flag) {
+  const map = {
+    OFFICIAL: { label: "Official", cls: "txflag--ok" },
+    RISKY: { label: "Risky", cls: "txflag--bad" },
+    CONTRACT: { label: "Contract", cls: "txflag--neutral" },
+    CREATION: { label: "Contract creation", cls: "txflag--neutral" },
+  };
+  const m = map[flag] ?? { label: flag, cls: "txflag--neutral" };
+  return h("span", { class: `txflag ${m.cls}`, text: m.label });
+}
+
+/**
+ * Render a wallet's annotated transaction records. Each row shows direction, counterparty (with its
+ * situation flags), value, and success — i.e. "who was on the other side and what happened".
+ */
+function renderActivityCard(activity) {
+  const card = h("div", { class: "report__card" });
+  const count = activity.analyzedCount ?? (activity.records ?? []).length;
+  card.appendChild(
+    h("h3", { text: `Recent transactions — last ${activity.windowDays ?? 90} days (${count} analyzed)` }),
+  );
+
+  const records = activity.records ?? [];
+  if (records.length === 0) {
+    card.appendChild(h("p", { class: "report__empty", text: "No transactions found in the window." }));
+    return card;
+  }
+
+  const list = h("ul", { class: "txlist" });
+  for (const rec of records) {
+    const row = h("li", { class: `txrow${rec.success === false ? " txrow--failed" : ""}` });
+
+    // Direction badge.
+    const dir = rec.direction === "IN" ? "IN" : "OUT";
+    row.appendChild(h("span", { class: `txdir txdir--${dir}`, text: dir === "IN" ? "↓ IN" : "↑ OUT" }));
+
+    // Main: counterparty + flags.
+    const main = h("div", { class: "txrow__main" });
+    const who = rec.counterparty
+      ? rec.counterpartyLabel || shortAddr(rec.counterparty)
+      : "Contract creation";
+    const title = h("p", { class: "txrow__title" });
+    title.appendChild(h("span", { text: dir === "IN" ? "From " : "To " }));
+    title.appendChild(h("strong", { text: who }));
+    main.appendChild(title);
+
+    const flags = h("div", { class: "txrow__flags" });
+    if (rec.success === false) flags.appendChild(h("span", { class: "txflag txflag--bad", text: "Failed" }));
+    for (const f of rec.flags ?? []) flags.appendChild(flagChip(f));
+    if ((rec.flags ?? []).length === 0 && rec.success !== false && rec.counterparty) {
+      flags.appendChild(h("span", { class: "txflag txflag--neutral", text: "EOA / unlabeled" }));
+    }
+    main.appendChild(flags);
+
+    main.appendChild(h("p", { class: "txrow__sub", text: shortDate(rec.timestamp) }));
+    row.appendChild(main);
+
+    // Value + explorer link.
+    const right = h("div", { class: "txrow__right" });
+    const valueText =
+      rec.valueUsd !== null && rec.valueUsd !== undefined
+        ? `$${Number(rec.valueUsd).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+        : `${rec.valueEth ?? "0"} ETH`;
+    right.appendChild(h("span", { class: "txrow__value", text: valueText }));
+    right.appendChild(
+      h("a", {
+        class: "txrow__link",
+        text: "View ›",
+        attrs: {
+          href: `https://etherscan.io/tx/${rec.txHash}`,
+          target: "_blank",
+          rel: "noopener noreferrer",
+        },
+      }),
+    );
+    row.appendChild(right);
+    list.appendChild(row);
+  }
+  card.appendChild(list);
+  return card;
+}
+
+/** Render the deeper related-address analyses (MULTI tier): counterparty wallets / token owner. */
+function renderRelatedCard(related) {
+  const card = h("div", { class: "report__card" });
+  const heading = related[0]?.relation === "OWNER" ? "Owner analysis" : "Top counterparties analyzed";
+  card.appendChild(h("h3", { html: `<span class="ai-badge">DEEP</span> ${escapeHtml(heading)}` }));
+
+  for (const r of related) {
+    const block = h("div", { class: `intel intel--${r.type}` });
+    const head = h("div", { class: "intel__head" });
+    head.appendChild(h("span", { class: "intel__icon", text: typeIcon(r.type), attrs: { "aria-hidden": "true" } }));
+    head.appendChild(h("span", { class: `vetverdict vetverdict--${r.verdict}`, text: verdictLabel(r.verdict) }));
+    head.appendChild(h("span", { class: "intel__type", text: typeLabel(r.type) }));
+    if (r.relation === "COUNTERPARTY" && r.interactions) {
+      head.appendChild(h("span", { class: "intel__label", text: `${r.interactions} tx` }));
+    }
+    if (r.label) head.appendChild(h("span", { class: "intel__label", text: r.label }));
+    block.appendChild(head);
+
+    block.appendChild(h("p", { class: "report__addr", text: r.address ?? "" }));
+
+    if (Array.isArray(r.reasons) && r.reasons.length) {
+      const ul = h("ul", { class: "vetresult__reasons" });
+      for (const reason of r.reasons.slice(0, 4)) ul.appendChild(h("li", { text: reason }));
+      block.appendChild(ul);
+    }
+    if (r.aiAssessment) {
+      const ai = h("div", { class: "intel__ai" });
+      ai.appendChild(h("span", { class: "ai-badge", text: "AI" }));
+      ai.appendChild(h("div", { class: "prose", html: miniMarkdown(r.aiAssessment) }));
+      block.appendChild(ai);
+    }
+    card.appendChild(block);
+  }
+  return card;
+}
+
+/** Render the type-specific AI assessment card (premium). */
+function renderTypeAiCard(assessment) {
+  const card = h("div", { class: "report__card report__card--ai" });
+  card.appendChild(h("h3", { html: '<span class="ai-badge">AI</span> Type-specific assessment' }));
+  card.appendChild(h("div", { class: "prose", html: miniMarkdown(assessment) }));
+  return card;
+}
+
+// ── Wallet report (deterministic findings: score / approvals / revoke) ─────────────────────
 
 /** Multi-wallet summary header card. */
 function renderMultiSummary(multi, data) {
@@ -65,7 +320,7 @@ function renderMultiSummary(multi, data) {
   return card;
 }
 
-/** Render a single wallet's structured report. */
+/** Render a single wallet's structured report (score header + overview + revoke + approvals). */
 function renderSingle(r) {
   const frag = document.createDocumentFragment();
 
@@ -222,97 +477,6 @@ function miniMarkdown(md) {
   return html;
 }
 
-/** Render an address-intelligence card: type, verdict, token signals, and type-specific AI note. */
-function renderAddressIntel(intelList) {
-  const card = h("div", { class: "report__card" });
-  card.appendChild(h("h3", { text: "Address intelligence" }));
-  for (const intel of intelList) {
-    if (!intel || typeof intel !== "object") continue;
-    const v = intel.verdict ?? "UNKNOWN";
-    const type = intel.type ?? "UNKNOWN";
-    // Per-type styling: each address type gets its own accent + icon.
-    const row = h("div", { class: `intel intel--${type}` });
-
-    const head = h("div", { class: "intel__head" });
-    head.appendChild(h("span", { class: "intel__icon", text: typeIcon(type), attrs: { "aria-hidden": "true" } }));
-    head.appendChild(h("span", { class: `vetverdict vetverdict--${v}`, text: verdictLabel(v) }));
-    head.appendChild(h("span", { class: "intel__type", text: typeLabel(type) }));
-    if (intel.label) head.appendChild(h("span", { class: "intel__label", text: intel.label }));
-    row.appendChild(head);
-
-    row.appendChild(h("p", { class: "report__addr", text: intel.address ?? "" }));
-
-    // Token security signals (ERC-20), shown as chips.
-    if (intel.token) {
-      const t = intel.token;
-      const chips = h("div", { class: "intel__chips" });
-      if (t.symbol || t.name) {
-        chips.appendChild(h("span", { class: "intel__chip", text: `${t.symbol ?? "?"}${t.name ? ` · ${t.name}` : ""}` }));
-      }
-      const danger = [
-        t.hasOwner ? "owner-controlled" : null,
-        t.mintable ? "mintable" : null,
-        t.pausable ? "pausable" : null,
-        t.hasBlacklist ? "blacklist" : null,
-      ].filter(Boolean);
-      if (danger.length === 0) {
-        chips.appendChild(h("span", { class: "intel__chip intel__chip--ok", text: "no dangerous functions" }));
-      } else {
-        for (const d of danger) chips.appendChild(h("span", { class: "intel__chip intel__chip--warn", text: d }));
-      }
-      row.appendChild(chips);
-    }
-
-    if (Array.isArray(intel.reasons) && intel.reasons.length) {
-      const ul = h("ul", { class: "vetresult__reasons" });
-      for (const reason of intel.reasons.slice(0, 6)) ul.appendChild(h("li", { text: reason }));
-      row.appendChild(ul);
-    }
-
-    // Type-specific AI assessment (premium).
-    if (intel.aiAssessment) {
-      const ai = h("div", { class: "intel__ai" });
-      ai.appendChild(h("span", { class: "ai-badge", text: "AI" }));
-      ai.appendChild(h("div", { class: "prose", html: miniMarkdown(intel.aiAssessment) }));
-      row.appendChild(ai);
-    }
-
-    card.appendChild(row);
-  }
-  return card;
-}
-
-/** Emoji-ish icon per address type (kept as text for zero-asset simplicity). */
-function typeIcon(t) {
-  const map = { EOA: "👛", ERC20: "🪙", ERC721: "🖼️", ERC1155: "🧩", CONTRACT: "📄", UNKNOWN: "❔" };
-  return map[t] ?? "❔";
-}
-
-/** Human label for an address type. */
-function typeLabel(t) {
-  const map = {
-    EOA: "Wallet (EOA)",
-    ERC20: "ERC-20 token",
-    ERC721: "ERC-721 NFT",
-    ERC1155: "ERC-1155 NFT",
-    CONTRACT: "Smart contract",
-    UNKNOWN: "Unknown type",
-  };
-  return map[t] ?? t;
-}
-
-/** Human label for a verdict enum. */
-function verdictLabel(v) {
-  const map = {
-    OFFICIAL: "Official / known",
-    LIKELY_SAFE: "Likely safe",
-    CAUTION: "Caution",
-    DANGEROUS: "Dangerous",
-    UNKNOWN: "Unknown",
-  };
-  return map[v] ?? v;
-}
-
 /** Render the AI insight cards (explanation + remediation), or a note if AI failed. */
 function renderAiInsight(ai) {
   const frag = document.createDocumentFragment();
@@ -361,27 +525,86 @@ function downloadJson(structured, orderId) {
 }
 
 /**
+ * Render the per-address, type-aware section: the type hero leads, then a tailored body:
+ *  - EOA      → the wallet's deterministic report (score / approvals / revoke) + annotated activity.
+ *  - token/NFT/contract → token-safety / legitimacy signals.
+ * Followed by reasons, optional related-address analysis and the type-specific AI note.
+ *
+ * `walletReportFor(address)` returns the matching structured wallet report (for EOAs), or null.
+ */
+function renderAddressSection(intel, walletReportFor) {
+  const section = h("div", { class: "addrsection" });
+  section.appendChild(renderTypeHero(intel));
+
+  const type = intel?.type ?? "UNKNOWN";
+
+  if (type === "EOA") {
+    // A personal wallet: lead with the wallet's own risk report, then the annotated activity.
+    const report = walletReportFor ? walletReportFor(intel.address) : null;
+    if (report) section.appendChild(renderSingle(report));
+    if (intel.activity) section.appendChild(renderActivityCard(intel.activity));
+  } else if (type === "ERC20") {
+    if (intel.token) section.appendChild(renderTokenCard(intel.token));
+  }
+
+  const reasons = renderReasons(intel?.reasons);
+  if (reasons) section.appendChild(reasons);
+
+  if (Array.isArray(intel?.related) && intel.related.length > 0) {
+    section.appendChild(renderRelatedCard(intel.related));
+  }
+  if (intel?.aiAssessment) section.appendChild(renderTypeAiCard(intel.aiAssessment));
+
+  return section;
+}
+
+/**
  * Render the full report (single or multi-wallet) into `container`. Returns nothing; clears the
  * container first. `data` is the POST /api/orders response body.
+ *
+ * When per-address intelligence is present (addressIntel), the report is ADDRESS-TYPE-FIRST: each
+ * audited address leads with its detected type and a type-tailored body. When it is absent (e.g. a
+ * CAP-delivered report without inspection), it falls back to the classic wallet-report layout.
  */
 export function renderReportInto(container, data) {
   container.innerHTML = "";
   const structured = data.structured;
   const isMulti = structured && Array.isArray(structured.reports);
+  const intelList = Array.isArray(data.addressIntel) ? data.addressIntel : [];
 
+  // Build a lookup from wallet address → structured report (for embedding under an EOA hero).
+  const reportByAddr = new Map();
   if (isMulti) {
-    container.appendChild(renderMultiSummary(structured, data));
-    for (const r of structured.reports) container.appendChild(renderSingle(r));
+    for (const r of structured.reports ?? []) {
+      if (r?.walletAddress) reportByAddr.set(String(r.walletAddress).toLowerCase(), r);
+    }
+  } else if (structured?.walletAddress) {
+    reportByAddr.set(String(structured.walletAddress).toLowerCase(), structured);
+  }
+  const walletReportFor = (addr) => reportByAddr.get(String(addr ?? "").toLowerCase()) ?? null;
+
+  if (intelList.length > 0) {
+    // Address-type-first layout.
+    if (isMulti) container.appendChild(renderMultiSummary(structured, data));
+    for (const intel of intelList) {
+      container.appendChild(renderAddressSection(intel, walletReportFor));
+    }
+    // Any wallet reports not matched to an intel entry (defensive) still get rendered.
+    const shown = new Set(intelList.map((i) => String(i.address ?? "").toLowerCase()));
+    for (const [addr, r] of reportByAddr) {
+      if (!shown.has(addr)) container.appendChild(renderSingle(r));
+    }
   } else {
-    container.appendChild(renderSingle(structured));
+    // Classic fallback: structured wallet report(s) only.
+    if (isMulti) {
+      container.appendChild(renderMultiSummary(structured, data));
+      for (const r of structured.reports) container.appendChild(renderSingle(r));
+    } else {
+      container.appendChild(renderSingle(structured));
+    }
   }
 
   container.appendChild(renderDecision(data.decision));
-
-  // Address intelligence (legitimacy / counterparty risk) for the audited address(es).
-  if (Array.isArray(data.addressIntel) && data.addressIntel.length > 0) {
-    container.appendChild(renderAddressIntel(data.addressIntel));
-  }
 
   // AI insight (premium tiers, when an LLM is configured).
   if (data.ai) {

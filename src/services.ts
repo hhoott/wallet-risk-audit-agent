@@ -40,7 +40,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "QUICK",
     name: "Wallet Quick Check-up",
     description:
-      "Read-only quick safety check for a single wallet: returns a Wallet Health Score plus the wallet's unlimited (infinite) token approvals and any interactions with known high-risk contracts. Never touches private keys; never sends transactions.",
+      "Read-only quick safety check for a single address: detects the address type (wallet / token / NFT / contract), returns a Wallet Health Score plus unlimited (infinite) token approvals and any interactions with known high-risk contracts. No AI and no transaction history — the fast, cheap screen. Never touches private keys; never sends transactions.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Monitoring"],
     priceUsdc: TIER_PRICE_USDC.QUICK,
     inputParameters:
@@ -51,7 +51,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "FULL",
     name: "Wallet Full Risk Report",
     description:
-      "Read-only full risk report for a single wallet: Health Score, complete approval scan (incl. unlimited approvals), suspicious & high-risk contract classification, asset distribution, failed/abnormal transactions, and prioritized revocation suggestions with links. Read-only; never touches private keys.",
+      "Read-only full risk report for a single address with AI insight. Adds, on top of QUICK: complete approval scan, suspicious & high-risk contract classification, asset distribution, failed/abnormal transactions, prioritized revocation links, an annotated recent-transaction history (each counterparty labelled official / risky / contract), a type-specific AI assessment, and a plain-language risk explanation + remediation plan. Read-only; never touches private keys.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Risk Assessment"],
     priceUsdc: TIER_PRICE_USDC.FULL,
     inputParameters:
@@ -60,9 +60,9 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
   },
   MULTI: {
     tier: "MULTI",
-    name: "Multi-Wallet & History Analysis",
+    name: "Multi-Wallet & Counterparty Analysis",
     description:
-      "Read-only risk analysis across multiple wallets with a longer historical window: a full risk report per wallet plus a combined summary. Read-only; never touches private keys.",
+      "Read-only deep analysis across multiple wallets with the longest historical window. Everything in FULL per wallet, plus a combined summary AND a deeper look at related addresses: each wallet's most-interacted counterparties are themselves typed and risk-assessed (and a token/contract's owner is profiled). The top tier for tracing where a wallet's funds actually flow. Read-only; never touches private keys.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Portfolio"],
     priceUsdc: TIER_PRICE_USDC.MULTI,
     inputParameters:

@@ -139,6 +139,98 @@ export interface TxFinding {
   contract?: Address;
 }
 
+// ── Wallet activity (annotated transaction records, EOA-focused) ────
+
+/** Direction of a transaction relative to the audited wallet. */
+export type TxDirection = "IN" | "OUT";
+
+/**
+ * A quick-display annotation flag for a transaction's counterparty (the "other side"):
+ *  - OFFICIAL    : the counterparty is on the curated official / known-good list.
+ *  - RISKY       : the counterparty hit a blacklist (phishing / drainer / scam).
+ *  - CONTRACT    : the counterparty is a smart contract (vs an EOA).
+ *  - CREATION    : a contract-creation transaction (no recipient).
+ */
+export type CounterpartyFlag = "OFFICIAL" | "RISKY" | "CONTRACT" | "CREATION";
+
+/**
+ * One transaction record with its counterparty annotated. This powers the per-transaction
+ * "target situation" view for a personal wallet (EOA): who the other side is, whether it is a
+ * known / official / risky address, and whether the transaction succeeded. Read-only / link-only.
+ */
+export interface TxRecord {
+  txHash: string;
+  /** UTC ISO-8601 time. */
+  timestamp: string;
+  direction: TxDirection;
+  /** The counterparty (sender for IN, recipient for OUT); null for contract-creation. */
+  counterparty: Address | null;
+  /** Whether the counterparty is a smart contract. */
+  counterpartyIsContract: boolean;
+  /** Curated label of the counterparty when known (e.g. "Uniswap V3 Router"). */
+  counterpartyLabel?: string;
+  /** Whether on-chain execution succeeded (false = failed / reverted). */
+  success: boolean;
+  /** Value in ETH (decimal string, trimmed). */
+  valueEth: string;
+  /** USD valuation of the value when the data source can provide it, otherwise null. */
+  valueUsd: number | null;
+  /** Annotation flags describing the counterparty / tx, for color-coded display. */
+  flags: CounterpartyFlag[];
+}
+
+/**
+ * A unique counterparty this wallet interacted with in the window, ranked by interaction count.
+ * Lightweight (deterministic, rule-based) — the deeper per-address assessment is computed by the
+ * portal at the MULTI tier and carried separately (see RelatedAddressAnalysis).
+ */
+export interface CounterpartySummary {
+  address: Address;
+  /** Number of transactions with this counterparty in the window. */
+  interactions: number;
+  isContract: boolean;
+  label?: string;
+  official: boolean;
+  blacklisted: boolean;
+}
+
+/** A wallet's recent activity: annotated transaction records + ranked counterparties. */
+export interface WalletActivity {
+  /** Applied history window in days. */
+  windowDays: number;
+  /** Number of transactions analyzed (after windowing + cap). */
+  analyzedCount: number;
+  /** Annotated transaction records, newest-first (capped for display). */
+  records: TxRecord[];
+  /** Ranked unique counterparties (most-interacted first, capped). */
+  counterparties: CounterpartySummary[];
+}
+
+/**
+ * Deeper analysis of an address related to the audited target (MULTI tier value-add):
+ *  - for an EOA wallet: each top transaction counterparty's own type + risk verdict;
+ *  - for a token / contract: the owner / deployer address's type + risk verdict.
+ * Optionally enriched with a type-specific AI note when an LLM is configured.
+ */
+export interface RelatedAddressAnalysis {
+  address: Address;
+  /** How this address relates to the audited target. */
+  relation: "COUNTERPARTY" | "OWNER";
+  /** Interaction count when the relation is COUNTERPARTY. */
+  interactions?: number;
+  /** Detected on-chain type of the related address. */
+  type: AddressType;
+  /** Machine-readable risk verdict (mirrors AddressIntel's verdict enum). */
+  verdict: string;
+  official: boolean;
+  blacklisted: boolean;
+  label?: string;
+  /** Human-readable reasons backing the verdict. */
+  reasons: string[];
+  /** Type-specific AI assessment (Markdown), present when an LLM is configured. */
+  aiAssessment?: string;
+}
+
 // ── Revocation advice ──────────────────────────────────────────────
 
 export type RevokeCategory = "UNLIMITED_APPROVAL" | "SUSPICIOUS_CONTRACT" | "HIGH_RISK_CONTRACT";

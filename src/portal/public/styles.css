@@ -1462,6 +1462,8 @@ select.field__input {
   }
   .report__card,
   .report__head,
+  .typehero,
+  .addrsection,
   .intel,
   .intel__ai {
     box-shadow: none !important;
@@ -1572,4 +1574,202 @@ select.field__input {
 
 .step--light .step__body {
   color: var(--black-80);
+}
+
+/* ── Address-type-first report: type hero + per-address sections ─────────── */
+.addrsection {
+  margin-bottom: 28px;
+}
+
+.addrsection + .addrsection {
+  padding-top: 8px;
+  border-top: 1px dashed #e0e0e6;
+}
+
+.typehero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px 24px;
+  margin-bottom: 16px;
+  background: var(--white);
+  border-radius: 18px;
+  border-left: 6px solid #6e6e73;
+  box-shadow: var(--card-shadow);
+}
+
+/* Per-type accent (mirrors the .intel--TYPE accents). */
+.typehero--EOA { border-left-color: #6e6e73; }
+.typehero--ERC20 { border-left-color: #b8860b; }
+.typehero--ERC721 { border-left-color: #8e44ad; }
+.typehero--ERC1155 { border-left-color: #2980b9; }
+.typehero--CONTRACT { border-left-color: #1d8a3f; }
+.typehero--UNKNOWN { border-left-color: #b3261e; }
+
+.typehero__icon {
+  font-size: 40px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.typehero__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.typehero__eyebrow {
+  font-family: var(--font-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--black-48);
+  margin: 0 0 2px;
+}
+
+.typehero__type {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin: 0 0 4px;
+}
+
+.typehero__addr {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--black-80);
+  margin: 0 0 10px;
+}
+
+.typehero__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .typehero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .typehero__type {
+    font-size: 22px;
+  }
+}
+
+/* ── Annotated transaction records (EOA) ────────────────────────────────── */
+.txlist {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.txrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid #ededf0;
+}
+
+.txrow:first-child {
+  border-top: none;
+}
+
+.txrow--failed {
+  opacity: 0.78;
+}
+
+.txdir {
+  flex: 0 0 auto;
+  font-family: var(--font-text);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.txdir--IN {
+  background: #e7f6ec;
+  color: #11532a;
+}
+
+.txdir--OUT {
+  background: #eef1f6;
+  color: #3a4a63;
+}
+
+.txrow__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.txrow__title {
+  font-family: var(--font-text);
+  font-size: 15px;
+  letter-spacing: -0.2px;
+  margin: 0 0 4px;
+  color: var(--near-black);
+}
+
+.txrow__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.txflag {
+  font-family: var(--font-text);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.txflag--ok { background: #e7f6ec; color: #11532a; }
+.txflag--bad { background: #fde8e6; color: #8a1c16; }
+.txflag--neutral { background: #f0f0f3; color: #4a4a4f; }
+
+.txrow__sub {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--black-48);
+  margin: 0;
+}
+
+.txrow__right {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.txrow__value {
+  font-family: var(--font-text);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--near-black);
+}
+
+.txrow__link {
+  font-size: 13px;
+  color: var(--apple-blue);
+  text-decoration: none;
+}
+
+.txrow__link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .txrow__right {
+    align-items: flex-start;
+  }
 }

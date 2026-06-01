@@ -39,6 +39,7 @@ import type {
   MultiWalletReport,
   RiskItem,
   TxFinding,
+  WalletActivity,
 } from "./models.js";
 import type {
   ChainDataSource,
@@ -57,6 +58,7 @@ import { generateRevokeAdvice } from "./modules/revoke-advisor.js";
 import { computeHealthScore } from "./modules/health-score-engine.js";
 import { AddressIntel, type AddressIntelOutcome } from "./modules/address-intel.js";
 import { AddressInspector, type AddressInspection } from "./modules/address-inspector.js";
+import { WalletActivityAnalyzer } from "./modules/wallet-activity.js";
 import {
   generateReport,
   generateMultiWalletReport,
@@ -228,6 +230,7 @@ export class AuditOrchestrator {
   private readonly txAnalyzer: TransactionAnalyzer;
   private readonly intel: AddressIntel;
   private readonly inspector: AddressInspector;
+  private readonly activity: WalletActivityAnalyzer;
 
   constructor(deps: AuditOrchestratorDeps) {
     this.chain = deps.chain;
@@ -245,6 +248,12 @@ export class AuditOrchestrator {
     });
     this.intel = new AddressIntel({ chain: deps.chain, rules: deps.rules, now: this.now });
     this.inspector = new AddressInspector({ chain: deps.chain, rules: deps.rules, now: this.now });
+    this.activity = new WalletActivityAnalyzer({
+      chain: deps.chain,
+      rules: deps.rules,
+      retry: deps.retry,
+      now: this.now,
+    });
   }
 
   /**
@@ -262,6 +271,15 @@ export class AuditOrchestrator {
    */
   inspectAddress(address: Address): Promise<AddressInspection> {
     return this.inspector.inspect(address);
+  }
+
+  /**
+   * Annotated wallet activity: the wallet's recent transaction records with each counterparty's
+   * situation labelled (official / risky / contract), plus the ranked unique counterparties. Read-
+   * only; never throws (degrades to empty activity when the data source is unavailable).
+   */
+  walletActivity(address: Address, windowDays?: number): Promise<WalletActivity> {
+    return this.activity.analyze(address, { windowDays: windowDays ?? windowForTier("FULL") });
   }
 
   /**

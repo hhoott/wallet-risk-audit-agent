@@ -20,6 +20,8 @@ import {
   isRowWithinWindow,
   extractTokenContractsFromTransfers,
   isVerifiedSource,
+  isEip7702Delegation,
+  isContractCode,
   type EtherscanTxRow,
   type EtherscanInternalRow,
   type EtherscanTokenTxRow,
@@ -221,6 +223,30 @@ describe("chain-etherscan — isVerifiedSource", () => {
     expect(isVerifiedSource("   ")).toBe(false);
     expect(isVerifiedSource(undefined)).toBe(false);
     expect(isVerifiedSource(null)).toBe(false);
+  });
+});
+
+describe("chain-etherscan — EIP-7702 delegation detection", () => {
+  const delegation = "0xef0100" + "a".repeat(40); // 0xef0100 + 20-byte address
+  const realContract = "0x6080604052348015600f57600080fd5b50";
+
+  it("recognizes an EIP-7702 delegation indicator", () => {
+    expect(isEip7702Delegation(delegation)).toBe(true);
+    expect(isEip7702Delegation(delegation.toUpperCase())).toBe(true);
+  });
+
+  it("does not flag real contract bytecode or empty code as a delegation", () => {
+    expect(isEip7702Delegation(realContract)).toBe(false);
+    expect(isEip7702Delegation("0x")).toBe(false);
+    expect(isEip7702Delegation(undefined)).toBe(false);
+  });
+
+  it("treats a delegating account as NOT a contract (it is an EOA wallet)", () => {
+    expect(isContractCode(delegation)).toBe(false);
+    expect(isContractCode("0x")).toBe(false);
+    expect(isContractCode("0x0")).toBe(false);
+    expect(isContractCode(undefined)).toBe(false);
+    expect(isContractCode(realContract)).toBe(true);
   });
 });
 

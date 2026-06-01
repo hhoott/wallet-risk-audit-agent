@@ -181,19 +181,63 @@ Each `addressIntel[]` entry:
 ```jsonc
 {
   "address": "0x…",
-  "type": "ERC20",                    // EOA | ERC20 | ERC721 | ERC1155 | CONTRACT | UNKNOWN
-  "verdict": "DANGEROUS",             // OFFICIAL | LIKELY_SAFE | CAUTION | DANGEROUS | UNKNOWN
+  "type": "EOA",                      // EOA | ERC20 | ERC721 | ERC1155 | CONTRACT | UNKNOWN
+  "verdict": "LIKELY_SAFE",           // OFFICIAL | LIKELY_SAFE | CAUTION | DANGEROUS | UNKNOWN
   "official": false,
-  "blacklisted": true,
+  "blacklisted": false,
   "label": "…",                       // curated label, if known
   "reasons": ["…"],
   "token": {                          // present for ERC-20 token contracts
     "symbol": "…", "name": "…",
     "hasOwner": true, "mintable": true, "pausable": false, "hasBlacklist": true
   },
-  "aiAssessment": "…"                 // Markdown; present on FULL/MULTI with an LLM
+  "aiAssessment": "…",                // Markdown; present on FULL/MULTI with an LLM
+  "activity": {                       // present for EOA wallets on FULL/MULTI
+    "windowDays": 90,
+    "analyzedCount": 29,
+    "records": [                      // annotated transaction records, newest-first
+      {
+        "txHash": "0x…",
+        "timestamp": "2026-05-21T20:05:47.000Z",
+        "direction": "OUT",           // IN | OUT
+        "counterparty": "0x…",        // the "other side"; null for contract creation
+        "counterpartyIsContract": true,
+        "counterpartyLabel": "…",     // curated label, if known
+        "success": true,
+        "valueEth": "0.0024",
+        "valueUsd": null,
+        "flags": ["CONTRACT"]         // OFFICIAL | RISKY | CONTRACT | CREATION
+      }
+    ],
+    "counterparties": [               // unique counterparties ranked by interaction count
+      { "address": "0x…", "interactions": 6, "isContract": true, "official": false, "blacklisted": false }
+    ]
+  },
+  "related": [                        // present on MULTI: deeper look at related addresses
+    {
+      "address": "0x…",
+      "relation": "COUNTERPARTY",     // COUNTERPARTY (wallet's top peers) | OWNER (token owner)
+      "interactions": 6,
+      "type": "CONTRACT",
+      "verdict": "CAUTION",
+      "official": false,
+      "blacklisted": false,
+      "reasons": ["…"],
+      "aiAssessment": "…"             // Markdown; present when an LLM is configured
+    }
+  ]
 }
 ```
+
+The report is **address-type-first**: the audited address's detected `type` leads the result and
+each type renders a tailored structure (a personal wallet shows its annotated transaction history;
+a token shows its safety signals). The three tiers differ in depth:
+
+| Tier | LLM analysis | Transaction history (EOA) | Related-address analysis |
+| --- | --- | --- | --- |
+| QUICK | — | — | — |
+| FULL | yes | yes (annotated counterparties) | — |
+| MULTI | yes | yes (longer window) | yes (top counterparties / token owner, each typed + risk-assessed) |
 
 Error responses use `{ "error": string, "code"?: string }` with an appropriate status:
 `400` (bad input), `402` (`PAYMENT_REQUIRED` / `PAYMENT_NOT_VERIFIED`), `403` (`CROO_KEY_DISABLED`),

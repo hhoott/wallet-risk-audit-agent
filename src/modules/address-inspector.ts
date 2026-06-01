@@ -23,9 +23,7 @@ import type {
   RiskRuleEntry,
   RiskRuleSource,
   TokenContractInfo,
-} from "../datasource/types.js";
-
-/** The structured, type-aware inspection result (deterministic; pre-LLM). */
+} from "../datasource/types.js"; /** The structured, type-aware inspection result (deterministic; pre-LLM). */
 export interface AddressInspection {
   address: Address;
   /** Detected on-chain type. */
@@ -50,6 +48,43 @@ function neutralMeta(address: Address): ContractMeta {
     txCount: Number.MAX_SAFE_INTEGER,
     audited: true,
     isContract: true,
+  };
+}
+
+/**
+ * Re-derive a wallet-appropriate verdict for an EOA. The base Address_Intel analysis grades an
+ * address like a contract (verified source / audit / age / tx-count), which is meaningless for a
+ * personal wallet and would mislabel ordinary wallets as "dangerous". For an EOA only two signals
+ * matter: a blacklist hit (→ DANGEROUS) or an official/known standing (→ OFFICIAL); otherwise it is
+ * simply an unlabeled wallet (LIKELY_SAFE) — always with the reminder to double-check before sending.
+ */
+function eoaVerdict(base: AddressIntelResult, rule: RiskRuleEntry): AddressIntelResult {
+  if (rule.blacklisted === true) {
+    return {
+      ...base,
+      verdict: "DANGEROUS",
+      riskLevel: "CRITICAL",
+      matchedFeatures: base.matchedFeatures.includes("BLACKLISTED") ? ["BLACKLISTED"] : [],
+      reasons: ["Address matches a community blacklist (phishing / drainer / scam)."],
+    };
+  }
+  if (rule.official === true) {
+    return {
+      ...base,
+      verdict: "OFFICIAL",
+      riskLevel: "LOW",
+      matchedFeatures: [],
+      reasons: [`Recognized as an official / known wallet${base.label ? ` (${base.label})` : ""}.`],
+    };
+  }
+  return {
+    ...base,
+    verdict: "LIKELY_SAFE",
+    riskLevel: "LOW",
+    matchedFeatures: [],
+    reasons: [
+      "Externally-owned wallet (EOA). No blacklist or official-list match. Always double-check the address before sending funds.",
+    ],
   };
 }
 
@@ -80,7 +115,11 @@ export class AddressInspector {
     const type = await this.detectType(address);
     const rule = await this.safeLookup(address);
     const meta = await this.safeMeta(address);
-    const intel = analyzeAddress(address, rule, meta, this.now());
+    const baseIntel = analyzeAddress(address, rule, meta, this.now());
+    // For an EOA (a personal wallet), the contract-quality suspicious features (unverified source,
+    // no audit, low tx count) do not apply — only blacklist / official standing is meaningful. So
+    // recompute a wallet-appropriate verdict instead of grading a wallet like a risky contract.
+    const intel = type === "EOA" ? eoaVerdict(baseIntel, rule) : baseIntel;
 
     const facts: Record<string, unknown> = {
       address,

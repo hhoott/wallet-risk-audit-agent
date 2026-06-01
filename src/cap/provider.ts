@@ -36,6 +36,7 @@ import type {
   ModuleStatus,
   MultiWalletReport,
   SettlementRecord,
+  WalletActivity,
 } from "../models.js";
 import {
   decideNegotiation,
@@ -121,6 +122,8 @@ export interface AuditRunner {
   vetAddress?(address: Address): Promise<AddressIntelOutcome>;
   /** Optional type-aware inspection: detect type + gather type-specific facts. */
   inspectAddress?(address: Address): Promise<AddressInspection>;
+  /** Optional annotated wallet activity (transaction records + ranked counterparties). */
+  walletActivity?(address: Address, windowDays?: number): Promise<WalletActivity>;
 }
 
 // ── Logging ─────────────────────────────────────────────────────────────────────────────
