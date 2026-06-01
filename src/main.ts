@@ -147,6 +147,26 @@ function printMissingConfigHelp(error: MissingConfigError): void {
   );
 }
 
+/** A started Provider plus its shutdown hook. */
+export interface StartedProvider {
+  provider: WalletAuditProvider;
+  stop(): void;
+}
+
+/** Build and start the Provider without taking over process lifetime. */
+export async function startProvider(options: BuildProviderOptions = {}): Promise<StartedProvider> {
+  const provider = await buildProvider(options);
+  await provider.start();
+  console.info(
+    "[main] WalletAuditProvider is listening for CAP events (read-only Ethereum audits; " +
+      "settlement via CAP on Base).",
+  );
+  return {
+    provider,
+    stop: () => provider.stop(),
+  };
+}
+
 /**
  * Build and start the Provider, then keep the process alive while the CAP WebSocket loop runs.
  *
@@ -156,12 +176,15 @@ function printMissingConfigHelp(error: MissingConfigError): void {
  */
 export async function main(): Promise<void> {
   try {
-    const provider = await buildProvider();
-    await provider.start();
-    console.info(
-      "[main] WalletAuditProvider is listening for CAP events (read-only Ethereum audits; " +
-        "settlement via CAP on Base). Press Ctrl+C to stop.",
-    );
+    const started = await startProvider();
+    const shutdown = (): void => {
+      console.info("[main] Shutting down WalletAuditProvider...");
+      started.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+    console.info("[main] Press Ctrl+C to stop.");
     // Keep the process alive. The CAP SDK's EventStream sustains the connection (auto-reconnect +
     // heartbeats); this never-resolving promise prevents the entry point from exiting.
     await new Promise<never>(() => {

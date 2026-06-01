@@ -108,12 +108,15 @@ loads the file automatically via `--env-file` (no extra dependency).
 cp .env.example .env       # then fill in your keys / Service IDs
 npm run preflight          # validate .env (reports exactly what's missing; never prints secrets)
 npm run build              # compile to dist/
-npm start                  # start the Provider (auto-loads .env)
+npm start                  # start Provider + Portal together (auto-loads .env)
 ```
 
 - `npm run preflight` — checks required vs optional variables and names the manual step each one
   comes from; exits non-zero until the required set is present.
-- `npm start` — builds-then-runs is also available via `npm run dev`.
+- `npm start` — starts the CAP Provider and the web Portal together.
+- `npm run provider` — starts only the CAP Provider.
+- `npm run portal` — starts only the web Portal.
+- `npm run dev` — builds, then starts Provider + Portal together.
 - `npm run requester` — runs the example Requester agent (A2A demo); set `CROO_TARGET_SERVICE_ID`,
   `CROO_TARGET_ORDER_ID`, and a wallet (`CROO_AUDIT_WALLET` or the first CLI arg).
 
@@ -176,10 +179,9 @@ returned structured report. All audit work stays in the Provider; the portal onl
 for orders.
 
 ```bash
-# the audit Provider must be running and its Services configured (so the portal can hire it)
-cp .env.example .env        # set PORTAL_CROO_SDK_KEY (a funded Requester) + SERVICE_ID_*
+cp .env.example .env        # set Provider keys + SERVICE_ID_*; PORTAL_CROO_SDK_KEY is optional in free mode
 npm run build
-npm run portal              # serves http://localhost:8787 (auto-loads .env)
+npm start                   # starts Provider + Portal; frontend prints as http://localhost:8787
 ```
 
 Endpoints: `GET /` (the UI), `GET /api/tiers` (pricing + availability), `POST /api/orders`

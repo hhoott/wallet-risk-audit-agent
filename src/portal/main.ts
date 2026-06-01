@@ -17,6 +17,7 @@
  */
 
 import { pathToFileURL } from "node:url";
+import type { Server } from "node:http";
 
 import {
   loadPortalConfig,
@@ -109,55 +110,78 @@ function localPortalUrls(config: PortalConfig): { frontend: string; api: string;
   };
 }
 
+/** A started Portal plus useful URLs and a shutdown hook. */
+export interface StartedPortal {
+  config: PortalConfig;
+  requester: PortalRequester;
+  server: Server;
+  urls: { frontend: string; api: string; health: string };
+  stop(done?: () => void): void;
+}
+
+/** Build and start the portal without taking over process lifetime. */
+export async function startPortal(options: BuildPortalOptions = {}): Promise<StartedPortal> {
+  const { config, requester, server } = await buildPortal(options);
+
+  // Connect the CAP WebSocket up front so the first order is fast (and fails fast if misconfigured).
+  // In free mode, a missing/invalid key may make this fail — that is tolerated, since orders fall
+  // back to a local audit; placeOrder will retry the connection on demand.
+  try {
+    await requester.connect();
+  } catch (err) {
+    if (config.paymentMode === "free") {
+      console.warn(
+        `[portal] CAP connection failed in free mode (will use local audit): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } else {
+      throw err;
+    }
+  }
+
+  await new Promise<void>((resolve) => {
+    server.listen(config.port, () => resolve());
+  });
+
+  const tiers = bookableTiers(config);
+  const urls = localPortalUrls(config);
+  console.info(`[portal] Frontend URL: ${urls.frontend}`);
+  console.info(`[portal] API base URL: ${urls.api}`);
+  console.info(`[portal] Health check: ${urls.health}`);
+  console.info(`[portal] Payment mode: ${config.paymentMode.toUpperCase()}`);
+  console.info(
+    `[portal] Bookable tiers: ${tiers.length > 0 ? tiers.join(", ") : "(none configured)"}`,
+  );
+  if (config.paymentMode === "free") {
+    console.warn(
+      "[portal] FREE MODE is on: the portal tries the normal CAP paid flow first, but if payment " +
+        "or delivery can't complete it serves a local read-only audit instead. For demos only — " +
+        "set PORTAL_PAYMENT_MODE=paid for production.",
+    );
+  }
+  console.warn(
+    "[portal] SECURITY: this portal pays real USDC per order and has NO authentication. " +
+      "Keep it on localhost or behind your own auth / rate limiting — do not expose it publicly as-is.",
+  );
+
+  return {
+    config,
+    requester,
+    server,
+    urls,
+    stop: (done) => {
+      requester.close();
+      server.close(done);
+    },
+  };
+}
+
 /** Build and start the portal, connecting the CAP WebSocket and listening for HTTP requests. */
 export async function main(): Promise<void> {
   try {
-    const { config, requester, server } = await buildPortal();
-
-    // Connect the CAP WebSocket up front so the first order is fast (and fails fast if misconfigured).
-    // In free mode, a missing/invalid key may make this fail — that is tolerated, since orders fall
-    // back to a local audit; placeOrder will retry the connection on demand.
-    try {
-      await requester.connect();
-    } catch (err) {
-      if (config.paymentMode === "free") {
-        console.warn(
-          `[portal] CAP connection failed in free mode (will use local audit): ${err instanceof Error ? err.message : String(err)}`,
-        );
-      } else {
-        throw err;
-      }
-    }
-
-    await new Promise<void>((resolve) => {
-      server.listen(config.port, () => resolve());
-    });
-
-    const tiers = bookableTiers(config);
-    const urls = localPortalUrls(config);
-    console.info(`[portal] Frontend URL: ${urls.frontend}`);
-    console.info(`[portal] API base URL: ${urls.api}`);
-    console.info(`[portal] Health check: ${urls.health}`);
-    console.info(`[portal] Payment mode: ${config.paymentMode.toUpperCase()}`);
-    console.info(
-      `[portal] Bookable tiers: ${tiers.length > 0 ? tiers.join(", ") : "(none configured)"}`,
-    );
-    if (config.paymentMode === "free") {
-      console.warn(
-        "[portal] FREE MODE is on: the portal tries the normal CAP paid flow first, but if payment " +
-          "or delivery can't complete it serves a local read-only audit instead. For demos only — " +
-          "set PORTAL_PAYMENT_MODE=paid for production.",
-      );
-    }
-    console.warn(
-      "[portal] SECURITY: this portal pays real USDC per order and has NO authentication. " +
-        "Keep it on localhost or behind your own auth / rate limiting — do not expose it publicly as-is.",
-    );
-
+    const portal = await startPortal();
     const shutdown = (): void => {
       console.info("[portal] Shutting down...");
-      requester.close();
-      server.close(() => process.exit(0));
+      portal.stop(() => process.exit(0));
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
