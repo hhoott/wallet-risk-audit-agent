@@ -6,7 +6,7 @@
     <title>Wallet Risk Audit — On-chain Security Check-up</title>
     <meta
       name="description"
-      content="A read-only on-chain wallet security audit. Get a Wallet Health Score, approval risks, and revocation advice. Pay per call in USDC over CAP."
+      content="A read-only on-chain wallet security audit. Get a Wallet Health Score, approval risks, and revocation advice through CAP with a demo fallback."
     />
     <link rel="stylesheet" href="/assets/styles.css" />
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
@@ -36,7 +36,7 @@
           <h1 id="hero-title" class="hero__title">Know your wallet's risk.</h1>
           <p class="hero__subtitle">
             A read-only security check-up for any Ethereum wallet. Health score, approval risks,
-            and what to revoke — paid per call in USDC.
+            and what to revoke — via CAP payment when available, with demo fallback.
           </p>
           <div class="hero__actions">
             <a class="btn btn--primary" href="#order">Run a check</a>
@@ -50,7 +50,7 @@
       <section class="section section--light" id="tiers" aria-labelledby="tiers-title">
         <div class="container">
           <h2 class="section__title" id="tiers-title">Pick a check-up.</h2>
-          <p class="section__lead">Pay per call in USDC, settled on Base over the CROO Agent Protocol.</p>
+          <p class="section__lead">CAP orders settle in USDC on Base; demo mode continues locally if payment is unavailable.</p>
           <div class="tiers" id="tiers-grid" role="list">
             <!-- Tier cards are rendered by app.js from /api/tiers -->
             <p class="tiers__loading" id="tiers-loading">Loading tiers…</p>
@@ -63,12 +63,12 @@
         <div class="container container--narrow">
           <h2 class="section__title section__title--light">Run a check-up.</h2>
           <p class="section__lead section__lead--light">
-            Enter a wallet address, choose a tier, and we'll place a paid order for you over CAP.
+            Enter a wallet address, choose a tier, and we'll try the normal CAP order flow first.
           </p>
 
           <div class="mode-banner" id="mode-banner" hidden role="status">
             <span class="mode-banner__dot" aria-hidden="true"></span>
-            <span><strong>Developer free mode.</strong> Payment failures fall back to a free local read-only audit. Not for production.</span>
+            <span><strong>Demo free mode.</strong> Payment failures fall back to a local read-only audit. Set paid mode for production.</span>
           </div>
 
           <form class="order" id="order-form" novalidate>
@@ -96,7 +96,7 @@
               Place order
             </button>
             <p class="order__note" id="order-note">
-              You'll be charged the tier price in USDC when the order settles.
+              In demo mode, an unpaid order can still continue as a local read-only audit.
             </p>
           </form>
 
@@ -125,8 +125,8 @@
             </li>
             <li class="step">
               <span class="step__num">2</span>
-              <h3 class="step__title">USDC settles on Base</h3>
-              <p class="step__body">Payment is locked in escrow by CAPVault. Gas is sponsored by the CROO platform.</p>
+              <h3 class="step__title">Payment is attempted</h3>
+              <p class="step__body">If USDC escrow succeeds, CAP settlement is recorded; in demo mode payment failure falls back locally.</p>
             </li>
             <li class="step">
               <span class="step__num">3</span>

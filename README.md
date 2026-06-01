@@ -189,7 +189,7 @@ Endpoints: `GET /` (the UI), `GET /api/tiers` (pricing + availability), `POST /a
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PORTAL_PAYMENT_MODE` | `paid` | `paid` requires a settled CAP order; `free` falls back to a local audit (dev/testing). |
+| `PORTAL_PAYMENT_MODE` | `free` | `free` attempts the CAP flow first, then falls back to a local audit if payment/delivery cannot complete; `paid` requires strict settlement. |
 | `PORTAL_CROO_SDK_KEY` | falls back to `CROO_SDK_KEY` | The portal Requester's own funded Agent key (its AA wallet pays for orders). |
 | `PORTAL_PORT` | `8787` | HTTP port the portal listens on. |
 | `PORTAL_ORDER_TIMEOUT_MS` | `120000` | Timeout for the full negotiate → pay → deliver round trip. |
@@ -197,12 +197,13 @@ Endpoints: `GET /` (the UI), `GET /api/tiers` (pricing + availability), `POST /a
 The portal reuses `SERVICE_ID_QUICK` / `SERVICE_ID_FULL` / `SERVICE_ID_MULTI` to know which tiers it
 can hire.
 
-### Free mode (development / testing)
+### Free mode (default demo behavior)
 
-Set `PORTAL_PAYMENT_MODE=free` to develop and test the full UX without a funded Requester wallet:
+By default the portal runs in `free` mode so the original user flow can continue even when the
+Requester wallet is not funded or payment fails:
 
 ```bash
-PORTAL_PAYMENT_MODE=free npm run portal
+npm run portal
 ```
 
 In free mode the portal still **attempts the full paid CAP flow first**. When it cannot complete —
@@ -218,8 +219,14 @@ that report instead of failing. Behavior worth knowing:
 - The local fallback reuses the exact same orchestrator and audit logic the Provider runs on a paid
   order, so it stays strictly read-only.
 
-> **Free mode bypasses paid settlement and must NEVER be used in production.** The default is `paid`;
-> the active mode is logged at startup.
+Use strict paid settlement in production:
+
+```bash
+PORTAL_PAYMENT_MODE=paid npm run portal
+```
+
+> **Free mode bypasses paid settlement and must NEVER be used in production.** The active mode is
+> logged at startup.
 
 > **Security:** the portal pays real USDC per order and ships with **no authentication or rate
 > limiting**. Keep it on localhost or put it behind your own auth — do not expose it to the public

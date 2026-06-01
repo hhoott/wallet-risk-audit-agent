@@ -12,19 +12,27 @@
  * Required env (injected, never hard-coded):
  *  - PORTAL_CROO_SDK_KEY (or CROO_SDK_KEY)  MANUAL(H1-1): the portal Requester's funded Agent key.
  *  - SERVICE_ID_QUICK / _FULL / _MULTI      MANUAL(H1-2): the audit Provider's Service_IDs to hire.
- * Optional: PORTAL_PORT (default 8787), CROO_API_URL, CROO_WS_URL, RPC_URL, PORTAL_ORDER_TIMEOUT_MS.
+ * Optional: PORTAL_PORT (default 8787), CROO_API_URL, CROO_WS_URL, RPC_URL, PORTAL_ORDER_TIMEOUT_MS,
+ * PORTAL_PAYMENT_MODE (defaults to free fallback; set "paid" for strict settlement).
  */
 
 import { pathToFileURL } from "node:url";
 
-import { loadPortalConfig, MissingPortalConfigError, type PortalConfig } from "./config.js";
+import {
+  loadPortalConfig,
+  MissingPortalConfigError,
+  type PortalConfig,
+} from "./config.js";
 import {
   PortalRequester,
   createPortalCapClient,
   type PortalCapClient,
 } from "./cap-requester.js";
 import { createPortalServer } from "./server.js";
-import { OrchestratorLocalAuditor, type LocalAuditor } from "./local-auditor.js";
+import {
+  OrchestratorLocalAuditor,
+  type LocalAuditor,
+} from "./local-auditor.js";
 import { loadConfig } from "../config.js";
 import { buildProvidersFromConfig } from "../datasource/providers/index.js";
 import { RetryPolicy } from "../datasource/retry.js";
@@ -71,11 +79,16 @@ function buildLocalAuditor(): LocalAuditor {
 export async function buildPortal(options: BuildPortalOptions = {}) {
   const config = options.config ?? loadPortalConfig();
   const client = options.capClient ?? (await createPortalCapClient(config));
-  const requester = new PortalRequester(client, { timeoutMs: config.orderTimeoutMs });
+  const requester = new PortalRequester(client, {
+    timeoutMs: config.orderTimeoutMs,
+  });
 
-  // In free mode, the portal falls back to a local read-only audit when the CAP flow fails.
+  // In free mode, the portal follows the normal CAP flow first, then falls back to a local
+  // read-only audit when payment/delivery cannot complete.
   const localAuditor =
-    config.paymentMode === "free" ? (options.localAuditor ?? buildLocalAuditor()) : options.localAuditor;
+    config.paymentMode === "free"
+      ? (options.localAuditor ?? buildLocalAuditor())
+      : options.localAuditor;
 
   const server = createPortalServer({ config, requester, localAuditor });
   return { config, requester, server };
@@ -113,11 +126,14 @@ export async function main(): Promise<void> {
     const tiers = bookableTiers(config);
     console.info(`[portal] Listening on http://localhost:${config.port}`);
     console.info(`[portal] Payment mode: ${config.paymentMode.toUpperCase()}`);
-    console.info(`[portal] Bookable tiers: ${tiers.length > 0 ? tiers.join(", ") : "(none configured)"}`);
+    console.info(
+      `[portal] Bookable tiers: ${tiers.length > 0 ? tiers.join(", ") : "(none configured)"}`,
+    );
     if (config.paymentMode === "free") {
       console.warn(
-        "[portal] FREE MODE is on: if a paid CAP order can't complete, the portal serves a free " +
-          "local read-only audit instead. For DEVELOPMENT/TESTING only — never use in production.",
+        "[portal] FREE MODE is on: the portal tries the normal CAP paid flow first, but if payment " +
+          "or delivery can't complete it serves a local read-only audit instead. For demos only — " +
+          "set PORTAL_PAYMENT_MODE=paid for production.",
       );
     }
     console.warn(

@@ -27,7 +27,7 @@ const els = {
 /** App state: the loaded tiers, keyed by tier id. */
 const state = {
   tiers: new Map(),
-  paymentMode: "paid",
+  paymentMode: "free",
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ function applyPaymentMode() {
     if (banner) banner.hidden = false;
     if (els.orderNote) {
       els.orderNote.textContent =
-        "Developer free mode: if a paid CAP order can't complete, you'll get a free local audit.";
+        "Demo mode: we'll try the normal paid CAP flow first; if payment can't complete, you'll still get a local read-only audit.";
     }
   } else if (banner) {
     banner.hidden = true;

@@ -19,13 +19,13 @@ import type { Tier } from "../config.js";
 
 /**
  * Payment mode for the portal.
- *  - "paid"  (default): a CAP order must be negotiated, PAID in USDC, and delivered. If payment or
- *            delivery fails, the order fails — the user gets no report.
- *  - "free": development/testing mode. The portal still ATTEMPTS the full CAP flow, but when it
- *            cannot complete (payment fails, negotiation/order rejected, expired, or times out) it
- *            falls back to running the read-only audit LOCALLY and returns that report instead of
- *            failing. This lets us exercise the end-to-end UX without a funded Requester wallet.
- *            It must NEVER be used in production — it bypasses paid settlement.
+ *  - "free" (default): demo mode. The portal still ATTEMPTS the full CAP flow, but when it cannot
+ *           complete (payment fails, negotiation/order rejected, expired, or times out) it falls
+ *           back to running the read-only audit LOCALLY and returns that report instead of failing.
+ *           This lets the original UX continue even when the Requester wallet has no USDC.
+ *           It must NEVER be used in production — it bypasses paid settlement.
+ *  - "paid": strict production mode. A CAP order must be negotiated, PAID in USDC, and delivered.
+ *            If payment or delivery fails, the order fails — the user gets no report.
  */
 export type PaymentMode = "paid" | "free";
 
@@ -45,7 +45,7 @@ export interface PortalConfig {
   serviceIds: Partial<Record<Tier, string>>;
   /** Per-order timeout (ms) for the full negotiate→pay→deliver round trip. */
   orderTimeoutMs: number;
-  /** Payment mode: "paid" (default) or "free" (dev/testing local-audit fallback). */
+  /** Payment mode: "free" (default demo fallback) or "paid" (strict settlement). */
   paymentMode: PaymentMode;
 }
 
@@ -62,28 +62,35 @@ function parsePort(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const n = Number.parseInt(raw, 10);
   if (!Number.isInteger(n) || n <= 0 || n > 65_535) {
-    throw new MissingPortalConfigError(`Invalid PORTAL_PORT: "${raw}" (must be 1-65535).`);
+    throw new MissingPortalConfigError(
+      `Invalid PORTAL_PORT: "${raw}" (must be 1-65535).`,
+    );
   }
   return n;
 }
 
 /**
  * Load the portal configuration from environment variables. The portal's Requester key
- * (PORTAL_CROO_SDK_KEY) is required in "paid" mode; it falls back to CROO_SDK_KEY for a single-key
- * local demo. In "free" mode the key is optional (the portal can fall back to a local audit), so a
- * missing key is tolerated and left blank.
+ * (PORTAL_CROO_SDK_KEY) is required only in explicit "paid" mode; it falls back to CROO_SDK_KEY for
+ * a single-key local demo. In default "free" mode the key is optional (the portal can fall back to a
+ * local audit), so a missing key is tolerated and left blank.
  */
-export function loadPortalConfig(env: NodeJS.ProcessEnv = process.env): PortalConfig {
-  // Payment mode: anything other than an explicit "free" is treated as the safe default "paid".
+export function loadPortalConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): PortalConfig {
+  // Payment mode: default to demo-friendly free mode; require an explicit "paid" for strict
+  // settlement so a missing/empty Requester wallet does not block the portal flow.
   const paymentMode: PaymentMode =
-    (env.PORTAL_PAYMENT_MODE ?? "").trim().toLowerCase() === "free" ? "free" : "paid";
+    (env.PORTAL_PAYMENT_MODE ?? "").trim().toLowerCase() === "paid"
+      ? "paid"
+      : "free";
 
   const crooSdkKey = env.PORTAL_CROO_SDK_KEY ?? env.CROO_SDK_KEY ?? "";
   if (crooSdkKey.trim() === "" && paymentMode === "paid") {
     throw new MissingPortalConfigError(
       "Missing required environment variable: PORTAL_CROO_SDK_KEY (or CROO_SDK_KEY). " +
         "The portal acts as a CAP Requester and needs a funded Agent key to pay for orders. " +
-        "(Set PORTAL_PAYMENT_MODE=free to run a local-audit fallback without a key, for dev/testing.)",
+        "(Unset PORTAL_PAYMENT_MODE, or set PORTAL_PAYMENT_MODE=free, to run the local-audit fallback.)",
     );
   }
 
@@ -101,7 +108,10 @@ export function loadPortalConfig(env: NodeJS.ProcessEnv = process.env): PortalCo
     crooSdkKey,
     rpcUrl: env.RPC_URL,
     serviceIds,
-    orderTimeoutMs: Number.isInteger(orderTimeoutMs) && orderTimeoutMs > 0 ? orderTimeoutMs : 120_000,
+    orderTimeoutMs:
+      Number.isInteger(orderTimeoutMs) && orderTimeoutMs > 0
+        ? orderTimeoutMs
+        : 120_000,
     paymentMode,
   };
 }
