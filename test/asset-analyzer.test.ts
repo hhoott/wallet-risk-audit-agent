@@ -46,10 +46,9 @@ const entryArb: fc.Arbitrary<GeneratedEntry> = fc.record({
   symbol: fc.string({ minLength: 1, maxLength: 5 }),
   balance: balanceArb,
   decimals: fc.integer({ min: 0, max: 18 }),
-  price: fc.option(
-    fc.double({ min: 0.0001, max: 100000, noNaN: true, noDefaultInfinity: true }),
-    { nil: null },
-  ),
+  price: fc.option(fc.double({ min: 0.0001, max: 100000, noNaN: true, noDefaultInfinity: true }), {
+    nil: null,
+  }),
 });
 
 /** Normalize a token to its lookup key (native is its own key; addresses are lowercased). */
@@ -203,7 +202,7 @@ describe("Asset_Analyzer — edge cases", () => {
 
   // EDGE_CASE (requirement 9.5): a dust ERC-20 (< $1) is folded into the "Other" aggregate
   // and never appears as its own top entry.
-  it("a dust ERC-20 (< $1) is folded into \"Other\" (requirement 9.5)", async () => {
+  it('a dust ERC-20 (< $1) is folded into "Other" (requirement 9.5)', async () => {
     const balances: RawBalance[] = [
       // Main asset worth $1000.
       { token: TOKEN_A, symbol: "USDC", balance: "1000", decimals: 6 },

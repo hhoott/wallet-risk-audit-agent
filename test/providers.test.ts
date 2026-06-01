@@ -178,9 +178,21 @@ describe("chain-etherscan — mapEtherscanInternalRow", () => {
 describe("chain-etherscan — extractTokenContractsFromTransfers", () => {
   it("dedupes tokens case-insensitively and parses decimals", () => {
     const rows: EtherscanTokenTxRow[] = [
-      { contractAddress: "0xAAA0000000000000000000000000000000000001", tokenSymbol: "USDC", tokenDecimal: "6" },
-      { contractAddress: "0xaaa0000000000000000000000000000000000001", tokenSymbol: "USDC", tokenDecimal: "6" },
-      { contractAddress: "0xBBB0000000000000000000000000000000000002", tokenSymbol: "DAI", tokenDecimal: "18" },
+      {
+        contractAddress: "0xAAA0000000000000000000000000000000000001",
+        tokenSymbol: "USDC",
+        tokenDecimal: "6",
+      },
+      {
+        contractAddress: "0xaaa0000000000000000000000000000000000001",
+        tokenSymbol: "USDC",
+        tokenDecimal: "6",
+      },
+      {
+        contractAddress: "0xBBB0000000000000000000000000000000000002",
+        tokenSymbol: "DAI",
+        tokenDecimal: "18",
+      },
     ];
     const tokens = extractTokenContractsFromTransfers(rows);
     expect(tokens).toHaveLength(2);
@@ -192,7 +204,11 @@ describe("chain-etherscan — extractTokenContractsFromTransfers", () => {
   it("skips rows with an unparseable decimals field or empty address", () => {
     const rows: EtherscanTokenTxRow[] = [
       { contractAddress: "", tokenSymbol: "X", tokenDecimal: "18" },
-      { contractAddress: "0xCCC0000000000000000000000000000000000003", tokenSymbol: "Y", tokenDecimal: "n/a" },
+      {
+        contractAddress: "0xCCC0000000000000000000000000000000000003",
+        tokenSymbol: "Y",
+        tokenDecimal: "n/a",
+      },
     ];
     expect(extractTokenContractsFromTransfers(rows)).toHaveLength(0);
   });
@@ -321,7 +337,11 @@ describe("price-coingecko — CoinGeckoPriceDataSource (injected fetch)", () => 
 describe("risk-rules — buildRiskIndex / lookupInIndex", () => {
   const list: RiskListEntry[] = [
     { address: "0xDEADbeef00000000000000000000000000000001", blacklisted: true, label: "Drainer" },
-    { address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", blacklisted: false, label: "Uniswap V2 Router" },
+    {
+      address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+      blacklisted: false,
+      label: "Uniswap V2 Router",
+    },
   ];
   const index = buildRiskIndex(list);
 
@@ -345,7 +365,10 @@ describe("risk-rules — buildRiskIndex / lookupInIndex", () => {
       { address: "0xabc0000000000000000000000000000000000001", blacklisted: false, label: "old" },
       { address: "0xABC0000000000000000000000000000000000001", blacklisted: true, label: "new" },
     ]);
-    const entry = lookupInIndex(overridden, "0xabc0000000000000000000000000000000000001" as Address);
+    const entry = lookupInIndex(
+      overridden,
+      "0xabc0000000000000000000000000000000000001" as Address,
+    );
     expect(entry.blacklisted).toBe(true);
     expect(entry.label).toBe("new");
   });
@@ -381,7 +404,9 @@ describe("risk-rules — StaticRiskRuleSource", () => {
 
   it("an injected list replaces the default (live-feed swap)", async () => {
     const rules = new StaticRiskRuleSource({
-      entries: [{ address: "0xfeed000000000000000000000000000000000001", blacklisted: true, label: "Feed" }],
+      entries: [
+        { address: "0xfeed000000000000000000000000000000000001", blacklisted: true, label: "Feed" },
+      ],
     });
     const hit = await rules.lookup("0xFEED000000000000000000000000000000000001" as Address);
     expect(hit.blacklisted).toBe(true);

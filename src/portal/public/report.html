@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Your Wallet Risk Report</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <nav class="nav" aria-label="Primary">
+      <div class="nav__inner">
+        <a class="nav__brand" href="/" aria-label="Wallet Risk Audit home">
+          <span class="nav__shield" aria-hidden="true">◇</span>
+          <span class="nav__brandtext">Wallet Risk Audit</span>
+        </a>
+        <div class="nav__links">
+          <a href="/#tiers">Pricing</a>
+          <a href="/#how">How it works</a>
+          <a href="/#order">Run a check</a>
+        </div>
+        <a class="nav__cta" href="/#order">New check</a>
+      </div>
+    </nav>
+
+    <main>
+      <section class="section section--light report-page" aria-labelledby="report-title">
+        <div class="container">
+          <div class="report-page__head">
+            <div>
+              <p class="report-page__eyebrow">Wallet Risk Audit</p>
+              <h1 class="report-page__title" id="report-title">Your report</h1>
+              <p class="report-page__sub" id="report-sub">Read-only · Ethereum Mainnet</p>
+            </div>
+            <div class="report-page__actions">
+              <button class="btn btn--pill-light" id="print-btn" type="button">Print / PDF</button>
+              <a class="btn btn--primary" href="/#order">New check</a>
+            </div>
+          </div>
+          <div class="report" id="report"></div>
+          <div class="report__empty" id="empty" hidden>
+            No report to show — it may have expired or this page was opened directly.
+            <a href="/#order">Run a new check ›</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <p class="footer__line">
+          Audited chain: Ethereum Mainnet (read-only) · Settlement: USDC on Base via CAP.
+        </p>
+        <p class="footer__fine">
+          This is a read-only analysis service. It never accesses your private keys or seed phrase
+          and never initiates a transaction. Revocation is offered only as a link for you to confirm
+          in your own wallet.
+        </p>
+      </div>
+    </footer>
+
+    <script src="/assets/report.js" type="module"></script>
+  </body>
+</html>

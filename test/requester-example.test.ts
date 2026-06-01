@@ -117,7 +117,9 @@ describe("hireAuditAgent — A2A call chain", () => {
     expect(client.calls).toEqual(["negotiateOrder", "payOrder", "getDelivery"]);
     // Wallet addresses are conveyed through the negotiation requirements JSON.
     expect(client.negotiateArgs[0]!.serviceId).toBe("svc-full");
-    expect(JSON.parse(client.negotiateArgs[0]!.requirements!)).toEqual({ walletAddresses: [WALLET] });
+    expect(JSON.parse(client.negotiateArgs[0]!.requirements!)).toEqual({
+      walletAddresses: [WALLET],
+    });
     // The provided orderId is used for both pay and delivery fetch.
     expect(client.payArgs).toEqual(["order-1"]);
     expect(client.deliveryArgs).toEqual(["order-1"]);
@@ -292,7 +294,8 @@ describe("decideFromReport — property: requester gating", () => {
         (riskLevel, healthScore) => {
           const decision = decideFromReport(makeStructured(riskLevel, healthScore));
 
-          const shouldBlock = isBlockingRiskLevel(riskLevel) || healthScore < HEALTH_SCORE_THRESHOLD;
+          const shouldBlock =
+            isBlockingRiskLevel(riskLevel) || healthScore < HEALTH_SCORE_THRESHOLD;
           expect(decision.proceed).toBe(!shouldBlock);
 
           // The decision echoes the inputs it gated on.

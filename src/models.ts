@@ -16,6 +16,17 @@ export type Address = string;
 /** Machine-readable risk level enum (glossary term Risk_Level). */
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+/**
+ * Detected on-chain type of an address. Drives type-specific analysis + a type-specific AI skill:
+ *  - EOA          : externally-owned account (a normal wallet).
+ *  - ERC20        : fungible token contract.
+ *  - ERC721       : NFT collection (non-fungible).
+ *  - ERC1155      : multi-token collection.
+ *  - CONTRACT     : a contract that is none of the above standard token types (e.g. a protocol).
+ *  - UNKNOWN      : could not be determined (e.g. on-chain reads unavailable).
+ */
+export type AddressType = "EOA" | "ERC20" | "ERC721" | "ERC1155" | "CONTRACT" | "UNKNOWN";
+
 /** Risk level ordering weight (higher = more severe); used for sorting and scoring. */
 export const RISK_LEVEL_ORDER: Record<RiskLevel, number> = {
   LOW: 0,
@@ -25,11 +36,7 @@ export const RISK_LEVEL_ORDER: Record<RiskLevel, number> = {
 };
 
 /** Approval kind. */
-export type ApprovalKind =
-  | "ERC20"
-  | "ERC721_OPERATOR"
-  | "ERC1155_OPERATOR"
-  | "PERMIT2";
+export type ApprovalKind = "ERC20" | "ERC721_OPERATOR" | "ERC1155_OPERATOR" | "PERMIT2";
 
 /** Structured report schema version (requirement 14.7). */
 export const SCHEMA_VERSION = "1.0.0";
@@ -134,10 +141,7 @@ export interface TxFinding {
 
 // ── Revocation advice ──────────────────────────────────────────────
 
-export type RevokeCategory =
-  | "UNLIMITED_APPROVAL"
-  | "SUSPICIOUS_CONTRACT"
-  | "HIGH_RISK_CONTRACT";
+export type RevokeCategory = "UNLIMITED_APPROVAL" | "SUSPICIOUS_CONTRACT" | "HIGH_RISK_CONTRACT";
 
 /** Revocation link, pointing to the audited chain (Ethereum); contains no key/signature (requirements 11.2 / 13.3). */
 export interface RevokeLink {

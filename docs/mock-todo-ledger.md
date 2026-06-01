@@ -79,7 +79,12 @@ grep -rn "MOCK(task-\|TODO(task-\|MANUAL(" src/
 
 ## 最终状态（实现完成）
 
-- 全部 8 个分析模块 + 编排器 + 支付网关 + CAP 适配层 + 真实数据源 Provider + 示例 Requester + 主入口装配 + 开源交付物（LICENSE/README）均已实现。
+- 核心审计能力：全部 8 个分析模块 + 编排器 + 支付网关 + CAP 适配层 + 真实数据源 Provider + 示例 Requester + 主入口装配 + 开源交付物（LICENSE/README）均已实现。
+- 扩展能力（赛后迭代）：
+  - 类型感知地址识别与路由（`src/modules/address-inspector.ts`：EOA/ERC-20/ERC-721/ERC-1155/合约）+ 地址合法性/交易对手风险核验（`src/modules/address-intel.ts`）。
+  - 可选 LLM 洞察层（`src/llm/`，LangChain + OpenAI 兼容协议）：风险解读 / 处置建议 / 报告问答 / 类型专属评估；未配置 `LLM_API_KEY` 时自动跳过，确定性审计不受影响。
+  - Web UI + HTTP API（`src/portal/`）：统一进程复用同一审计引擎；支付支持 demo CAP-checkout（用户填 CROO key，默认关闭 `PORTAL_ALLOW_CROO_KEY`）与 MetaMask 直转 USDC（Base，链上校验）；独立结果页 + SSE 进度 + 按地址类型差异化样式。
 - `grep -rn "MOCK(task-\|TODO(task-" src/` 结果为空：无遗留代码债。
-- 仅剩 `MANUAL(...)` 标记（CROO_SDK_KEY、SERVICE_ID_*、数据源 API Key），均为人工介入项，代码侧严格从环境变量注入、绝不硬编码，符合纪律要求。
-- 测试：17 个测试文件，180 通过 / 1 跳过（跳过项为需真实网络的 Provider 集成测试，由 `RUN_PROVIDER_INTEGRATION` 守卫）。`npm run build` 干净通过。
+- 仅剩 `MANUAL(...)` 标记（CROO_SDK_KEY、SERVICE_ID_*、数据源 API Key、可选 LLM/收款地址），均为人工介入/环境注入项，代码侧严格从环境变量读取、绝不硬编码。
+- 工具链：ESLint v9 flat config、Prettier、EditorConfig、`.nvmrc`、GitHub Actions CI、CONTRIBUTING/SECURITY/CHANGELOG 齐备。
+- 测试：22 个测试文件，**224 通过 / 1 跳过**（跳过项为需真实网络的 Provider 集成测试，由 `RUN_PROVIDER_INTEGRATION` 守卫）。`npm run build` / `npm run lint` / `npm run format:check` / `npm test` 全绿。

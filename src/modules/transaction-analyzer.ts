@@ -19,17 +19,8 @@
  * verified with property-based testing without any data source.
  */
 
-import {
-  DEFAULT_TX_WINDOW_DAYS,
-  MIN_TX_WINDOW_DAYS,
-  MAX_TX_WINDOW_DAYS,
-} from "../config.js";
-import type {
-  Address,
-  TxFinding,
-  TxFindingReason,
-  TxInteractionType,
-} from "../models.js";
+import { DEFAULT_TX_WINDOW_DAYS, MIN_TX_WINDOW_DAYS, MAX_TX_WINDOW_DAYS } from "../config.js";
+import type { Address, TxFinding, TxFindingReason, TxInteractionType } from "../models.js";
 import type {
   ChainDataSource,
   ContractMeta,
@@ -39,10 +30,7 @@ import type {
 } from "../datasource/types.js";
 import { DataSourceUnavailable, type RetryPolicy } from "../datasource/retry.js";
 import { isHighRiskContract } from "./risk-classifier.js";
-import {
-  validateAddress,
-  type AddressValidationErrorKind,
-} from "./address-validator.js";
+import { validateAddress, type AddressValidationErrorKind } from "./address-validator.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -62,11 +50,9 @@ export const HIGH_GAS_MULTIPLIER = 3n;
 // ── User-facing result messages ────────────────────────────────────
 
 /** No high-risk interaction within the window (requirement 8.6). */
-export const NO_HIGH_RISK_INTERACTIONS_MESSAGE =
-  "No high-risk contract interactions found";
+export const NO_HIGH_RISK_INTERACTIONS_MESSAGE = "No high-risk contract interactions found";
 /** No failed or abnormal transaction within the window (requirement 10.4). */
-export const NO_FAILED_OR_ABNORMAL_TX_MESSAGE =
-  "No failed or abnormal transactions found";
+export const NO_FAILED_OR_ABNORMAL_TX_MESSAGE = "No failed or abnormal transactions found";
 /** Transaction data source unavailable after retries (requirement 10.6). */
 export const RETRIEVAL_FAILED_MESSAGE =
   "Transaction retrieval failed: transaction data source unavailable, please try again later";
@@ -127,10 +113,7 @@ export interface TxAnalysisRetrievalFailed {
   unavailableSource: string;
 }
 
-export type TxAnalysisResult =
-  | TxAnalysisOk
-  | TxAnalysisInvalidAddress
-  | TxAnalysisRetrievalFailed;
+export type TxAnalysisResult = TxAnalysisOk | TxAnalysisInvalidAddress | TxAnalysisRetrievalFailed;
 
 // ── Pure helpers: window clamping / windowing ──────────────────────
 
@@ -222,10 +205,7 @@ function sharesEndpoints(a: Address, b: Address): boolean {
  * legitimate counterparty when it shares BOTH the first 4 and last 4 hex chars with some OTHER
  * historical interaction address (a different address than the counterparty itself).
  */
-export function isAddressPoisoning(
-  counterparty: Address,
-  historical: readonly Address[],
-): boolean {
+export function isAddressPoisoning(counterparty: Address, historical: readonly Address[]): boolean {
   const cNorm = counterparty.toLowerCase();
   for (const h of historical) {
     if (h.toLowerCase() === cNorm) continue; // must be a different address

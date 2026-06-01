@@ -21,11 +21,7 @@
  */
 
 import type { RuntimeConfig } from "../../config.js";
-import type {
-  ChainDataSource,
-  PriceDataSource,
-  RiskRuleSource,
-} from "../types.js";
+import type { ChainDataSource, PriceDataSource, RiskRuleSource } from "../types.js";
 import type { RetryPolicy } from "../retry.js";
 import type { RiskListEntry } from "./risk-rules.js";
 
@@ -83,9 +79,7 @@ export interface ProviderApiKeys {
  * single place that maps env var names to provider options; values are NEVER hard-coded.
  * MANUAL(H7-12).
  */
-export function loadProviderApiKeys(
-  env: NodeJS.ProcessEnv = process.env,
-): ProviderApiKeys {
+export function loadProviderApiKeys(env: NodeJS.ProcessEnv = process.env): ProviderApiKeys {
   const keys: ProviderApiKeys = {
     coingeckoPro: env.COINGECKO_PRO === "true",
   };

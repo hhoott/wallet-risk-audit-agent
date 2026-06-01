@@ -61,23 +61,19 @@ describe("Health_Score_Engine", () => {
   // risk items (invariant under any permutation of the set).
   it("Property 17: health score determinism (permutation invariant)", () => {
     fc.assert(
-      fc.property(
-        riskItemsArb(),
-        fc.array(fc.nat(), { maxLength: 30 }),
-        (items, swaps) => {
-          const a = computeHealthScore(items);
-          const b = computeHealthScore(items);
-          // Same input → identical score and identical deductions ordering.
-          expect(b.score).toBe(a.score);
-          expect(b.deductions).toEqual(a.deductions);
+      fc.property(riskItemsArb(), fc.array(fc.nat(), { maxLength: 30 }), (items, swaps) => {
+        const a = computeHealthScore(items);
+        const b = computeHealthScore(items);
+        // Same input → identical score and identical deductions ordering.
+        expect(b.score).toBe(a.score);
+        expect(b.deductions).toEqual(a.deductions);
 
-          // Any permutation of the same multiset → identical score and deductions ordering.
-          const shuffled = permute(items, swaps);
-          const c = computeHealthScore(shuffled);
-          expect(c.score).toBe(a.score);
-          expect(c.deductions).toEqual(a.deductions);
-        },
-      ),
+        // Any permutation of the same multiset → identical score and deductions ordering.
+        const shuffled = permute(items, swaps);
+        const c = computeHealthScore(shuffled);
+        expect(c.score).toBe(a.score);
+        expect(c.deductions).toEqual(a.deductions);
+      }),
       { numRuns: 200 },
     );
   });
@@ -87,17 +83,13 @@ describe("Health_Score_Engine", () => {
   // higher than the other side's.
   it("Property 18: health score monotonicity", () => {
     fc.assert(
-      fc.property(
-        riskItemsArb(),
-        riskItemsArb(15),
-        (base, extra) => {
-          // Adding items never increases the score (superset relation).
-          const superset = base.concat(extra);
-          const baseScore = computeHealthScore(base).score;
-          const supersetScore = computeHealthScore(superset).score;
-          expect(supersetScore).toBeLessThanOrEqual(baseScore);
-        },
-      ),
+      fc.property(riskItemsArb(), riskItemsArb(15), (base, extra) => {
+        // Adding items never increases the score (superset relation).
+        const superset = base.concat(extra);
+        const baseScore = computeHealthScore(base).score;
+        const supersetScore = computeHealthScore(superset).score;
+        expect(supersetScore).toBeLessThanOrEqual(baseScore);
+      }),
       { numRuns: 200 },
     );
 

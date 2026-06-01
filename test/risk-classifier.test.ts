@@ -249,16 +249,14 @@ describe("Risk_Classifier", () => {
     const meta: ContractMeta = {
       contract: addrFromIndex(3),
       verified: true,
-      deployedAt: new Date(
-        FIXED_NOW.getTime() - RECENTLY_DEPLOYED_DAYS * MS_PER_DAY,
-      ).toISOString(),
+      deployedAt: new Date(FIXED_NOW.getTime() - RECENTLY_DEPLOYED_DAYS * MS_PER_DAY).toISOString(),
       txCount: 200,
       audited: true,
       isContract: true,
     };
-    expect(detectSuspiciousFeatures(meta, { contract: addrFromIndex(3), blacklisted: false }, FIXED_NOW)).toEqual(
-      [],
-    );
+    expect(
+      detectSuspiciousFeatures(meta, { contract: addrFromIndex(3), blacklisted: false }, FIXED_NOW),
+    ).toEqual([]);
   });
 
   it("a null deployedAt is treated as unknown and handled as no match", () => {
@@ -270,9 +268,9 @@ describe("Risk_Classifier", () => {
       audited: true,
       isContract: true,
     };
-    expect(detectSuspiciousFeatures(meta, { contract: addrFromIndex(4), blacklisted: false }, FIXED_NOW)).toEqual(
-      [],
-    );
+    expect(
+      detectSuspiciousFeatures(meta, { contract: addrFromIndex(4), blacklisted: false }, FIXED_NOW),
+    ).toEqual([]);
   });
 
   it("txCount exactly 100 does not match LOW_TX_COUNT (strictly less than the threshold)", () => {
@@ -284,9 +282,9 @@ describe("Risk_Classifier", () => {
       audited: true,
       isContract: true,
     };
-    expect(detectSuspiciousFeatures(meta, { contract: addrFromIndex(5), blacklisted: false }, FIXED_NOW)).toEqual(
-      [],
-    );
+    expect(
+      detectSuspiciousFeatures(meta, { contract: addrFromIndex(5), blacklisted: false }, FIXED_NOW),
+    ).toEqual([]);
   });
 
   it("2 matches (non-blacklist) are escalated to HIGH_RISK / HIGH", () => {

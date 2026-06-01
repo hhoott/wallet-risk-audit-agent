@@ -27,11 +27,7 @@
  * data sources and pure analysis modules; it has no write-chain / send-transaction path.
  */
 
-import {
-  DEFAULT_TX_WINDOW_DAYS,
-  MULTI_TX_WINDOW_DAYS,
-  type Tier,
-} from "./config.js";
+import { DEFAULT_TX_WINDOW_DAYS, MULTI_TX_WINDOW_DAYS, type Tier } from "./config.js";
 import type {
   Address,
   ApprovalRecord,
@@ -59,6 +55,8 @@ import { analyzeAssets } from "./modules/asset-analyzer.js";
 import { TransactionAnalyzer } from "./modules/transaction-analyzer.js";
 import { generateRevokeAdvice } from "./modules/revoke-advisor.js";
 import { computeHealthScore } from "./modules/health-score-engine.js";
+import { AddressIntel, type AddressIntelOutcome } from "./modules/address-intel.js";
+import { AddressInspector, type AddressInspection } from "./modules/address-inspector.js";
 import {
   generateReport,
   generateMultiWalletReport,
@@ -192,8 +190,7 @@ export function buildRiskItems(
     const category = risk.classification.includes("HIGH_RISK")
       ? "HIGH_RISK_CONTRACT"
       : "SUSPICIOUS_CONTRACT";
-    const features =
-      risk.matchedFeatures.length > 0 ? risk.matchedFeatures.join(", ") : "none";
+    const features = risk.matchedFeatures.length > 0 ? risk.matchedFeatures.join(", ") : "none";
     items.push({
       category,
       riskLevel: risk.riskLevel,
@@ -229,6 +226,8 @@ export class AuditOrchestrator {
   private readonly scanner: ApprovalScanner;
   private readonly classifier: RiskClassifier;
   private readonly txAnalyzer: TransactionAnalyzer;
+  private readonly intel: AddressIntel;
+  private readonly inspector: AddressInspector;
 
   constructor(deps: AuditOrchestratorDeps) {
     this.chain = deps.chain;
@@ -244,6 +243,25 @@ export class AuditOrchestrator {
       retry: deps.retry,
       now: this.now,
     });
+    this.intel = new AddressIntel({ chain: deps.chain, rules: deps.rules, now: this.now });
+    this.inspector = new AddressInspector({ chain: deps.chain, rules: deps.rules, now: this.now });
+  }
+
+  /**
+   * Vet an address's legitimacy / assess a counterparty's risk (extended audit targets). Read-only;
+   * reuses the same risk-feature logic as the approval classifier. Returns the structured result or
+   * a classified failure when a data source is unavailable.
+   */
+  vetAddress(address: Address): Promise<AddressIntelOutcome> {
+    return this.intel.analyze(address);
+  }
+
+  /**
+   * Type-aware inspection: detect the address type (EOA / token / NFT / contract) and assemble
+   * type-specific facts for the type-specific AI skill. Read-only; never throws.
+   */
+  inspectAddress(address: Address): Promise<AddressInspection> {
+    return this.inspector.inspect(address);
   }
 
   /**
@@ -442,10 +460,7 @@ export class AuditOrchestrator {
   }
 
   /** Run the Transaction_Analyzer for the given window, mapping its result to an outcome. */
-  private async runTransactionAnalysis(
-    address: Address,
-    windowDays: number,
-  ): Promise<TxOutcome> {
+  private async runTransactionAnalysis(address: Address, windowDays: number): Promise<TxOutcome> {
     const result = await this.txAnalyzer.analyze(address, { windowDays });
     if (result.status === "OK") {
       return {

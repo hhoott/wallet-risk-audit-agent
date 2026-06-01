@@ -11,7 +11,7 @@
  * solely to drive deterministic unit / property tests without touching the network.
  */
 
-import type { Address } from "../models.js";
+import type { Address, AddressType } from "../models.js";
 import type {
   ChainDataSource,
   PriceDataSource,
@@ -23,6 +23,7 @@ import type {
   ContractMeta,
   UsdPrice,
   RiskRuleEntry,
+  TokenContractInfo,
 } from "./types.js";
 
 export interface MockChainData {
@@ -31,6 +32,8 @@ export interface MockChainData {
   internalTxs?: Record<string, RawInternalTx[]>;
   balances?: Record<string, RawBalance[]>;
   contractMeta?: Record<string, ContractMeta>;
+  addressType?: Record<string, AddressType>;
+  tokenInfo?: Record<string, TokenContractInfo>;
 }
 
 const key = (addr: Address): string => addr.toLowerCase();
@@ -84,6 +87,26 @@ export class MockChainDataSource implements ChainDataSource {
       }
     );
   }
+
+  async detectAddressType(addr: Address): Promise<AddressType> {
+    return this.data.addressType?.[key(addr)] ?? "UNKNOWN";
+  }
+
+  async getTokenContractInfo(contract: Address): Promise<TokenContractInfo> {
+    return (
+      this.data.tokenInfo?.[key(contract)] ?? {
+        name: null,
+        symbol: null,
+        decimals: null,
+        totalSupply: null,
+        hasOwner: false,
+        owner: null,
+        mintable: false,
+        pausable: false,
+        hasBlacklist: false,
+      }
+    );
+  }
 }
 
 /** In-memory PriceDataSource mock. */
@@ -97,9 +120,7 @@ export class MockPriceDataSource implements PriceDataSource {
     this.prices = new Map(Object.entries(prices).map(([k, v]) => [k.toLowerCase(), v]));
   }
 
-  async getUsdPrices(
-    tokens: (Address | "NATIVE")[],
-  ): Promise<Map<Address | "NATIVE", UsdPrice>> {
+  async getUsdPrices(tokens: (Address | "NATIVE")[]): Promise<Map<Address | "NATIVE", UsdPrice>> {
     if (this.fail) throw new Error("mock: price unavailable");
     const result = new Map<Address | "NATIVE", UsdPrice>();
     for (const t of tokens) {

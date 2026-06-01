@@ -268,7 +268,9 @@ export function renderHumanReadable(s: AuditReportStructured): string {
     for (const item of s.assets.top) {
       const usd = item.usdValue === null ? "N/A" : String(item.usdValue);
       const pct = item.percentage === null ? "N/A" : `${item.percentage}%`;
-      lines.push(`- ${item.symbol} (${item.token}) | balance ${item.balance} | usd ${usd} | ${pct}`);
+      lines.push(
+        `- ${item.symbol} (${item.token}) | balance ${item.balance} | usd ${usd} | ${pct}`,
+      );
     }
     if (s.assets.other !== null) {
       const o = s.assets.other;
@@ -307,7 +309,8 @@ export function renderHumanReadable(s: AuditReportStructured): string {
     lines.push("No module status reported.");
   } else {
     for (const m of s.moduleStatuses) {
-      const src = m.unavailableSource !== undefined ? ` (unavailable source: ${m.unavailableSource})` : "";
+      const src =
+        m.unavailableSource !== undefined ? ` (unavailable source: ${m.unavailableSource})` : "";
       lines.push(`- ${m.module}: ${m.status}${src}`);
     }
   }
@@ -334,9 +337,7 @@ export function generateReport(inputs: AuditInputs): AuditReport {
  * orchestrator (task 13) is responsible for choosing the wallet set and the longer history
  * window; this function only assembles the already-produced sub-reports.
  */
-export function generateMultiWalletReport(
-  perWallet: AuditReportStructured[],
-): MultiWalletReport {
+export function generateMultiWalletReport(perWallet: AuditReportStructured[]): MultiWalletReport {
   return {
     schemaVersion: SCHEMA_VERSION,
     walletCount: perWallet.length,

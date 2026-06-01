@@ -1,38 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  loadPortalConfig,
-  MissingPortalConfigError,
-} from "../src/portal/config.js";
+import { loadPortalConfig, MissingPortalConfigError } from "../src/portal/config.js";
 
-describe("portal config", () => {
-  it("defaults to free mode so an unfunded requester can still continue", () => {
-    const cfg = loadPortalConfig({ CROO_SDK_KEY: "provider-key" });
-
+describe("portal config (unified single-process model)", () => {
+  it("defaults to free mode (payment result ignored)", () => {
+    const cfg = loadPortalConfig({});
     expect(cfg.paymentMode).toBe("free");
-    expect(cfg.crooSdkKey).toBe("");
+    expect(cfg.port).toBe(8787);
   });
 
-  it("uses an explicit portal requester key in free mode when one is provided", () => {
-    const cfg = loadPortalConfig({
-      CROO_SDK_KEY: "provider-key",
-      PORTAL_CROO_SDK_KEY: "requester-key",
-    });
-
-    expect(cfg.paymentMode).toBe("free");
-    expect(cfg.crooSdkKey).toBe("requester-key");
-  });
-
-  it("requires requester credentials only in explicit paid mode", () => {
-    expect(() => loadPortalConfig({ PORTAL_PAYMENT_MODE: "paid" })).toThrow(
-      MissingPortalConfigError,
-    );
-
-    const cfg = loadPortalConfig({
-      PORTAL_PAYMENT_MODE: "paid",
-      PORTAL_CROO_SDK_KEY: "croo_sk_test",
-    });
+  it("honors an explicit paid mode without needing any CAP key", () => {
+    // The portal no longer opens its own CAP connection, so no SDK key is required in either mode.
+    const cfg = loadPortalConfig({ PORTAL_PAYMENT_MODE: "paid" });
     expect(cfg.paymentMode).toBe("paid");
-    expect(cfg.crooSdkKey).toBe("croo_sk_test");
+  });
+
+  it("treats any non-'paid' value as free", () => {
+    expect(loadPortalConfig({ PORTAL_PAYMENT_MODE: "anything" }).paymentMode).toBe("free");
+    expect(loadPortalConfig({ PORTAL_PAYMENT_MODE: "FREE" }).paymentMode).toBe("free");
+    expect(loadPortalConfig({ PORTAL_PAYMENT_MODE: "PAID" }).paymentMode).toBe("paid");
+  });
+
+  it("maps configured Service_IDs into the catalog (informational)", () => {
+    const cfg = loadPortalConfig({
+      SERVICE_ID_QUICK: "svc-q",
+      SERVICE_ID_FULL: "svc-f",
+      SERVICE_ID_MULTI: "svc-m",
+    });
+    expect(cfg.serviceIds).toEqual({ QUICK: "svc-q", FULL: "svc-f", MULTI: "svc-m" });
+  });
+
+  it("parses PORTAL_PORT and rejects an invalid port", () => {
+    expect(loadPortalConfig({ PORTAL_PORT: "9000" }).port).toBe(9000);
+    expect(() => loadPortalConfig({ PORTAL_PORT: "not-a-port" })).toThrow(MissingPortalConfigError);
+    expect(() => loadPortalConfig({ PORTAL_PORT: "70000" })).toThrow(MissingPortalConfigError);
+  });
+
+  it("falls back to a sane order timeout", () => {
+    expect(loadPortalConfig({}).orderTimeoutMs).toBe(120_000);
+    expect(loadPortalConfig({ PORTAL_ORDER_TIMEOUT_MS: "5000" }).orderTimeoutMs).toBe(5000);
+    expect(loadPortalConfig({ PORTAL_ORDER_TIMEOUT_MS: "0" }).orderTimeoutMs).toBe(120_000);
   });
 });

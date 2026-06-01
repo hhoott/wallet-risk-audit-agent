@@ -29,21 +29,14 @@ const validAddress: fc.Arbitrary<string> = hex40.chain((body) => {
   const upper = `0x${body.toUpperCase()}`;
   const checksum = getAddress(lower as `0x${string}`); // real EIP-55 checksum
   // random per-character mixed case
-  const mixed = fc
-    .array(fc.boolean(), { minLength: 40, maxLength: 40 })
-    .map(
-      (flags) =>
-        `0x${body
-          .split("")
-          .map((c, i) => (flags[i] ? c.toUpperCase() : c))
-          .join("")}`,
-    );
-  return fc.oneof(
-    fc.constant(lower),
-    fc.constant(upper),
-    fc.constant(checksum),
-    mixed,
+  const mixed = fc.array(fc.boolean(), { minLength: 40, maxLength: 40 }).map(
+    (flags) =>
+      `0x${body
+        .split("")
+        .map((c, i) => (flags[i] ? c.toUpperCase() : c))
+        .join("")}`,
   );
+  return fc.oneof(fc.constant(lower), fc.constant(upper), fc.constant(checksum), mixed);
 });
 
 /** Generator for various invalid forms. */
@@ -145,22 +138,16 @@ describe("Address_Validator — validateAddresses", () => {
           expect(new Set(resultKeys).size).toBe(resultKeys.length);
 
           // pendingAddresses: mutually distinct, all-lowercase, equal to the deduplicated set of valid addresses
-          const expectedPending = batch.results
-            .filter((r) => r.valid)
-            .map((r) => r.normalized!);
+          const expectedPending = batch.results.filter((r) => r.valid).map((r) => r.normalized!);
           expect(batch.pendingAddresses).toEqual(expectedPending);
-          expect(new Set(batch.pendingAddresses).size).toBe(
-            batch.pendingAddresses.length,
-          );
+          expect(new Set(batch.pendingAddresses).size).toBe(batch.pendingAddresses.length);
           for (const a of batch.pendingAddresses) {
             expect(a).toBe(a.toLowerCase());
           }
 
           // idempotence: re-running batch validation on the result inputs leaves the deduplicated set unchanged
           const again = validateAddresses(batch.results.map((r) => r.input));
-          expect(again.results.map((r) => dedupKey(r.input))).toEqual(
-            expectedKeys,
-          );
+          expect(again.results.map((r) => dedupKey(r.input))).toEqual(expectedKeys);
         },
       ),
       { numRuns: 200 },

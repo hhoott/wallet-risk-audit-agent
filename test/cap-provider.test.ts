@@ -176,7 +176,11 @@ describe("CAP Provider — negotiation handler wiring", () => {
       },
     });
 
-    const result = await handleNegotiationCreated(client, { type: "x", negotiation_id: "neg-1" }, tierMap());
+    const result = await handleNegotiationCreated(
+      client,
+      { type: "x", negotiation_id: "neg-1" },
+      tierMap(),
+    );
 
     expect(result.action).toBe("ACCEPTED");
     expect(client.calls.acceptNegotiation).toEqual(["neg-1"]);
@@ -193,7 +197,11 @@ describe("CAP Provider — negotiation handler wiring", () => {
       },
     });
 
-    const result = await handleNegotiationCreated(client, { type: "x", negotiation_id: "neg-2" }, tierMap());
+    const result = await handleNegotiationCreated(
+      client,
+      { type: "x", negotiation_id: "neg-2" },
+      tierMap(),
+    );
 
     expect(result.action).toBe("REJECTED");
     expect(client.calls.acceptNegotiation).toHaveLength(0);
@@ -208,7 +216,11 @@ describe("CAP Provider — negotiation handler wiring", () => {
       },
     });
 
-    const result = await handleNegotiationCreated(client, { type: "x", negotiation_id: "neg-3" }, tierMap());
+    const result = await handleNegotiationCreated(
+      client,
+      { type: "x", negotiation_id: "neg-3" },
+      tierMap(),
+    );
 
     expect(result.action).toBe("REJECTED");
     expect(client.calls.rejectNegotiation).toHaveLength(1);
@@ -416,7 +428,11 @@ describe("CAP Provider — loop resilience", () => {
     });
 
     // Must resolve (not reject), reporting an ERROR result.
-    const result = await handleNegotiationCreated(client, { type: "x", negotiation_id: "neg-err" }, tierMap());
+    const result = await handleNegotiationCreated(
+      client,
+      { type: "x", negotiation_id: "neg-err" },
+      tierMap(),
+    );
     expect(result.action).toBe("ERROR");
   });
 
@@ -482,12 +498,21 @@ describe("CAP Provider — event routing", () => {
     expect(stream.handlers.has(EventType.OrderPaid)).toBe(true);
 
     // Emit a negotiation_created event → acceptNegotiation; await the routed async handler.
-    stream.emit(EventType.NegotiationCreated, { type: EventType.NegotiationCreated, negotiation_id: "neg-r" });
-    await provider.onNegotiationCreated({ type: EventType.NegotiationCreated, negotiation_id: "neg-r" });
+    stream.emit(EventType.NegotiationCreated, {
+      type: EventType.NegotiationCreated,
+      negotiation_id: "neg-r",
+    });
+    await provider.onNegotiationCreated({
+      type: EventType.NegotiationCreated,
+      negotiation_id: "neg-r",
+    });
     expect(client.calls.acceptNegotiation).toContain("neg-r");
 
     // Emit an order_paid event → deliverOrder.
-    const orderResult = await provider.onOrderPaid({ type: EventType.OrderPaid, order_id: "order-r" });
+    const orderResult = await provider.onOrderPaid({
+      type: EventType.OrderPaid,
+      order_id: "order-r",
+    });
     expect(orderResult.action).toBe("DELIVERED");
     expect(client.calls.deliverOrder.some((c) => c.id === "order-r")).toBe(true);
 

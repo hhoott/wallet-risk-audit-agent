@@ -3,9 +3,13 @@
 // Responsibilities:
 //  - Load bookable tiers from /api/tiers and render the pricing cards + the order form's tier menu.
 //  - Validate the wallet input client-side (mirrors the server's 0x + 40 hex rule) for fast feedback.
-//  - Place an order via POST /api/orders, show staged progress, and render the returned report.
-//
-// The report shape mirrors src/models.ts (AuditReportStructured / MultiWalletReport).
+//  - Place an order via POST /api/orders (SSE), show staged progress + a live log, then hand the
+//    result to a SEPARATE result page (/report) via sessionStorage.
+
+import { renderReportInto } from "./report-render.js";
+
+/** sessionStorage key shared with the standalone result page (report.js). */
+const REPORT_KEY = "wra:lastReport";
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -22,12 +26,33 @@ const els = {
   status: document.getElementById("status"),
   reportSection: document.getElementById("report-section"),
   report: document.getElementById("report"),
+  // Payment modal
+  payModal: document.getElementById("pay-modal"),
+  payClose: document.getElementById("pay-close"),
+  payConfirm: document.getElementById("pay-confirm"),
+  paySkip: document.getElementById("pay-skip"),
+  crooKey: document.getElementById("croo-key"),
+  paySummary: document.getElementById("pay-summary"),
+  payLead: document.getElementById("pay-lead"),
+  // Tabs + MetaMask
+  tabCroo: document.getElementById("tab-croo"),
+  tabMm: document.getElementById("tab-mm"),
+  panelCroo: document.getElementById("panel-croo"),
+  panelMm: document.getElementById("panel-mm"),
+  mmConnect: document.getElementById("mm-connect"),
+  mmAccount: document.getElementById("mm-account"),
+  mmPayInfo: document.getElementById("mm-payinfo"),
+  mmError: document.getElementById("mm-error"),
 };
 
-/** App state: the loaded tiers, keyed by tier id. */
+/** App state: the loaded tiers + payment config. */
 const state = {
   tiers: new Map(),
   paymentMode: "free",
+  metamask: { enabled: false },
+  allowCrooKey: false,
+  payMethod: "croo", // active modal tab
+  mmAccount: null, // connected wallet address
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -53,6 +78,15 @@ function formatPrice(n) {
   return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
+/** Escape user-derived strings before inserting as HTML. */
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 // ── Tier loading & rendering ────────────────────────────────────────────────
 
 async function loadTiers() {
@@ -61,6 +95,8 @@ async function loadTiers() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     state.paymentMode = data.paymentMode ?? "paid";
+    state.metamask = data.metamask ?? { enabled: false };
+    state.allowCrooKey = data.allowCrooKey === true;
     applyPaymentMode();
     renderTiers(data.tiers ?? []);
   } catch {
@@ -178,7 +214,10 @@ function validateInput(tier, addresses) {
   return null;
 }
 
-els.form.addEventListener("submit", async (e) => {
+/** Pending order captured when the form is submitted, consumed when the modal is confirmed. */
+let pendingOrder = null;
+
+els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   const tier = els.tierSelect.value;
   const addresses = parseWalletInput();
@@ -189,54 +228,377 @@ els.form.addEventListener("submit", async (e) => {
     return;
   }
 
+  pendingOrder = { tier, addresses };
+  openPayModal(tier, addresses);
+});
+
+els.tierSelect.addEventListener("change", syncWalletFieldForTier);
+
+// ── Payment modal ─────────────────────────────────────────────────────────────
+
+/** Open the payment modal, filling the order summary and adapting to mode + available methods. */
+function openPayModal(tier, addresses) {
+  const t = state.tiers.get(tier);
+  const price = t ? formatPrice(t.priceUsdc) : "?";
+  const count = addresses.length;
+  els.paySummary.innerHTML =
+    `Order: <strong>${escapeHtml(t ? t.name : tier)}</strong> · ` +
+    `<strong>${price} USDC</strong> · ${count} wallet${count > 1 ? "s" : ""}`;
+
+  // In free mode, allow skipping payment to get a free local preview.
+  els.paySkip.hidden = state.paymentMode !== "free";
+
+  // Show / hide the CROO-key tab (demo capability) and the MetaMask tab based on server config.
+  els.tabCroo.hidden = !state.allowCrooKey;
+  els.tabMm.hidden = !state.metamask.enabled;
+  if (state.metamask.enabled) {
+    els.mmPayInfo.innerHTML = `Send <strong>${price} USDC</strong> on Base to <code>${escapeHtml(shortAddr(state.metamask.payee))}</code>.`;
+  }
+  // Hide the whole tab bar when only one (or zero) method is available.
+  const tabBar = els.tabCroo.parentElement;
+  const methodCount = (state.allowCrooKey ? 1 : 0) + (state.metamask.enabled ? 1 : 0);
+  if (tabBar) tabBar.hidden = methodCount < 2;
+
+  // Default to the first available method.
+  setPayMethod(state.allowCrooKey ? "croo" : state.metamask.enabled ? "metamask" : "croo");
+  els.crooKey.value = "";
+  els.mmError.hidden = true;
+  els.payModal.hidden = false;
+  setTimeout(() => {
+    if (state.allowCrooKey) els.crooKey.focus();
+  }, 50);
+}
+
+/** Switch the active payment tab. */
+function setPayMethod(method) {
+  state.payMethod = method;
+  const onCroo = method === "croo";
+  els.tabCroo.classList.toggle("tab--active", onCroo);
+  els.tabMm.classList.toggle("tab--active", !onCroo);
+  els.tabCroo.setAttribute("aria-selected", String(onCroo));
+  els.tabMm.setAttribute("aria-selected", String(!onCroo));
+  els.panelCroo.hidden = !onCroo;
+  els.panelMm.hidden = onCroo;
+  els.payConfirm.textContent = onCroo ? "Pay & run audit" : "Pay USDC & run audit";
+}
+
+els.tabCroo.addEventListener("click", () => setPayMethod("croo"));
+els.tabMm.addEventListener("click", () => setPayMethod("metamask"));
+
+/** Close the payment modal. */
+function closePayModal() {
+  els.payModal.hidden = true;
+}
+
+els.payClose.addEventListener("click", closePayModal);
+els.payModal.addEventListener("click", (e) => {
+  if (e.target instanceof HTMLElement && e.target.dataset.close === "1") closePayModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !els.payModal.hidden) closePayModal();
+});
+
+// ── MetaMask connect + pay ──────────────────────────────────────────────────────
+
+/** Connect MetaMask (EIP-1193) and remember the account. */
+els.mmConnect.addEventListener("click", async () => {
+  els.mmError.hidden = true;
+  const eth = window.ethereum;
+  if (!eth) {
+    showMmError("MetaMask not detected. Install it, or use the CROO agent tab.");
+    return;
+  }
+  try {
+    const accounts = await eth.request({ method: "eth_requestAccounts" });
+    state.mmAccount = accounts?.[0] ?? null;
+    els.mmAccount.textContent = state.mmAccount ? shortAddr(state.mmAccount) : "";
+  } catch (err) {
+    showMmError(err?.message ?? "Could not connect MetaMask.");
+  }
+});
+
+function showMmError(msg) {
+  els.mmError.textContent = msg;
+  els.mmError.hidden = false;
+}
+
+/** USDC on Base details (mirrors the server constants). */
+const BASE_CHAIN_ID_HEX = "0x2105"; // 8453
+const USDC_DECIMALS = 6;
+
+/** Ensure MetaMask is on Base; try to switch if not. */
+async function ensureBase(eth) {
+  const current = await eth.request({ method: "eth_chainId" });
+  if (current === BASE_CHAIN_ID_HEX) return;
+  try {
+    await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_CHAIN_ID_HEX }] });
+  } catch (err) {
+    // 4902 = chain not added to the wallet.
+    if (err?.code === 4902) {
+      await eth.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: BASE_CHAIN_ID_HEX,
+          chainName: "Base",
+          nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://mainnet.base.org"],
+          blockExplorerUrls: ["https://basescan.org"],
+        }],
+      });
+    } else {
+      throw err;
+    }
+  }
+}
+
+/** Encode an ERC-20 transfer(to, amount) calldata. */
+function encodeUsdcTransfer(to, amountBaseUnits) {
+  const selector = "a9059cbb"; // transfer(address,uint256)
+  const addr = to.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const amt = amountBaseUnits.toString(16).padStart(64, "0");
+  return `0x${selector}${addr}${amt}`;
+}
+
+/** Convert a USDC decimal price to base units (6 decimals) as BigInt. */
+function usdcBaseUnits(amount) {
+  const [whole, frac = ""] = String(amount).split(".");
+  const fracPadded = (frac + "0".repeat(USDC_DECIMALS)).slice(0, USDC_DECIMALS);
+  return BigInt(whole) * 10n ** BigInt(USDC_DECIMALS) + BigInt(fracPadded || "0");
+}
+
+/** Send the USDC transfer via MetaMask; returns the tx hash. */
+async function payWithMetaMask(tier) {
+  const eth = window.ethereum;
+  if (!eth) throw new Error("MetaMask not detected.");
+  if (!state.mmAccount) {
+    const accounts = await eth.request({ method: "eth_requestAccounts" });
+    state.mmAccount = accounts?.[0] ?? null;
+  }
+  if (!state.mmAccount) throw new Error("No wallet account connected.");
+  await ensureBase(eth);
+
+  const t = state.tiers.get(tier);
+  const amount = usdcBaseUnits(t ? t.priceUsdc : 0);
+  const data = encodeUsdcTransfer(state.metamask.payee, amount);
+  const txHash = await eth.request({
+    method: "eth_sendTransaction",
+    params: [{ from: state.mmAccount, to: state.metamask.usdc, data, value: "0x0" }],
+  });
+  return txHash;
+}
+
+// ── Confirm / skip ──────────────────────────────────────────────────────────────
+
+els.payConfirm.addEventListener("click", async () => {
+  if (!pendingOrder) return;
+
+  if (state.payMethod === "metamask") {
+    els.mmError.hidden = true;
+    els.payConfirm.disabled = true;
+    els.payConfirm.textContent = "Confirm in MetaMask…";
+    try {
+      const txHash = await payWithMetaMask(pendingOrder.tier);
+      closePayModal();
+      void runOrder(pendingOrder, { method: "metamask", payTxHash: txHash });
+    } catch (err) {
+      showMmError(err?.message ?? "Payment was rejected or failed.");
+    } finally {
+      els.payConfirm.disabled = false;
+      els.payConfirm.textContent = "Pay USDC & run audit";
+    }
+    return;
+  }
+
+  // CROO agent key path.
+  const key = els.crooKey.value.trim();
+  if (key.length === 0) {
+    showStatus([{ label: "Enter your CROO agent key, switch to MetaMask, or use “Skip & preview free”.", state: "error" }], true);
+    return;
+  }
+  closePayModal();
+  void runOrder(pendingOrder, { method: "cap", crooKey: key });
+});
+
+els.paySkip.addEventListener("click", () => {
+  if (!pendingOrder) return;
+  closePayModal();
+  void runOrder(pendingOrder, { method: "none" });
+});
+
+// ── Order execution (SSE live log) ──────────────────────────────────────────────
+
+/**
+ * Run an order against POST /api/orders with `stream: true` and render the live step log via SSE.
+ * `payment` is `{ method, crooKey?, payTxHash? }`. Falls back to a single error on transport failure.
+ */
+async function runOrder(order, payment) {
+  const method = payment?.method ?? "none";
   els.submit.disabled = true;
   els.reportSection.hidden = true;
-  const steps = [
-    { key: "negotiate", label: "Negotiating the order over CAP" },
-    { key: "pay", label: "Paying in USDC (escrow on Base)" },
-    { key: "audit", label: "Auditing the wallet (read-only)" },
-    { key: "deliver", label: "Fetching your report" },
+  const capSteps = [
+    { key: "negotiating", label: "Negotiating the order over CAP" },
+    { key: "accepted", label: "Provider accepted — creating the on-chain order" },
+    { key: "paying", label: "Paying in USDC (escrow on Base)" },
+    { key: "paid", label: "Payment locked — agent is auditing" },
+    { key: "delivering", label: "Waiting for the report to be delivered" },
+    { key: "delivered", label: "Report delivered" },
   ];
-  renderProgress(steps, 0);
+  const mmSteps = [
+    { key: "paying", label: "Verifying your USDC payment on Base" },
+    { key: "paid", label: "Payment verified — agent is auditing" },
+    { key: "delivered", label: "Report ready" },
+  ];
+  const localSteps = [
+    { key: "audit", label: "Auditing the wallet (read-only)" },
+    { key: "delivered", label: "Report ready" },
+  ];
+  const activeSteps = method === "cap" ? capSteps : method === "metamask" ? mmSteps : localSteps;
+  const reached = new Set();
+  const isFree = state.paymentMode === "free";
+  renderProgressWithLog(activeSteps, reached, []);
 
-  // The whole negotiate→pay→deliver round trip happens in one request; advance the visual steps on
-  // a gentle timer so the user sees motion (the server resolves them all at once on completion).
-  let visualStep = 0;
-  const ticker = setInterval(() => {
-    visualStep = Math.min(visualStep + 1, steps.length - 1);
-    renderProgress(steps, visualStep);
-  }, 1500);
+  const log = [];
+  const pushLog = (line, kind) => {
+    log.push({ line, kind });
+    renderProgressWithLog(activeSteps, reached, log);
+  };
+
+  /** Mark every step done, render a success state, pause 5s, then navigate to the result page. */
+  const finishWithDelay = (data) => {
+    for (const s of activeSteps) reached.add(s.key);
+    renderProgressWithLog(activeSteps, reached, log, { allDone: true });
+    pushLog("✓ Done. Opening your report in 5 seconds…", "info");
+    try {
+      sessionStorage.setItem(REPORT_KEY, JSON.stringify(data));
+    } catch {
+      /* storage may be unavailable; fall back to inline render below */
+    }
+    window.setTimeout(() => {
+      // The report lives on its own page; navigate there. If storage failed, render inline instead.
+      if (sessionStorage.getItem(REPORT_KEY)) {
+        window.location.href = "/report";
+      } else {
+        renderReport(data);
+      }
+    }, 5000);
+  };
 
   try {
     const res = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tier, walletAddresses: addresses }),
+      body: JSON.stringify({
+        tier: order.tier,
+        walletAddresses: order.addresses,
+        method,
+        crooKey: payment?.crooKey,
+        payTxHash: payment?.payTxHash,
+        stream: true,
+      }),
     });
-    clearInterval(ticker);
-    const data = await res.json();
-    if (!res.ok) {
-      showStatus([{ label: data.error ?? "The order could not be completed.", state: "error" }]);
+
+    if (!res.ok || !res.body) {
+      // Non-stream error (e.g. 400 before streaming started).
+      let msg = "The order could not be completed.";
+      try {
+        msg = (await res.json()).error ?? msg;
+      } catch {
+        /* ignore */
+      }
+      pushLog(msg, "error");
+      showStatus([{ label: msg, state: "error" }], true);
       return;
     }
-    renderProgress(steps, steps.length); // all done
-    renderReport(data);
+
+    await consumeSse(res.body, {
+      onProgress: (p) => {
+        reached.add(p.step);
+        let line = `• ${p.message}`;
+        if (p.orderId) line += `  [order ${p.orderId}]`;
+        pushLog(line, p.txHash ? "tx" : "info");
+        if (p.txHash) pushLog(`  USDC tx: ${p.txHash}`, "tx");
+      },
+      onResult: (data) => {
+        // Success path (paid CAP delivery, or free-mode local fallback): show success then navigate.
+        finishWithDelay(data);
+      },
+      onError: (data) => {
+        const msg = data.error ?? "The order failed.";
+        if (isFree) {
+          // Free mode: never block the user on a payment failure — surface it as a benign note and
+          // still proceed. (The server normally returns a local report; this is a safety net.)
+          pushLog(`Payment skipped (free mode): ${msg}`, "info");
+          if (data.structured) {
+            finishWithDelay(data);
+          } else {
+            showStatus([{ label: msg, state: "error" }], true);
+          }
+          return;
+        }
+        // Paid-mode payment failure: let the user retry with a different key.
+        pushLog(`✕ ${msg}${data.code ? ` (${data.code})` : ""}`, "error");
+        showRetry(order);
+      },
+    });
   } catch {
-    clearInterval(ticker);
-    showStatus([{ label: "Network error. Please check the portal is running and try again.", state: "error" }]);
+    pushLog("Network error. Is the portal running?", "error");
+    showStatus([{ label: "Network error. Please check the portal is running and try again.", state: "error" }], true);
   } finally {
     els.submit.disabled = false;
   }
-});
+}
 
-els.tierSelect.addEventListener("change", syncWalletFieldForTier);
+/** Parse a Server-Sent Events stream from a fetch Response body. */
+async function consumeSse(stream, handlers) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // Split on event boundaries (blank line).
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      let event = "message";
+      let dataStr = "";
+      for (const lineRaw of chunk.split("\n")) {
+        const line = lineRaw.trimEnd();
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+      }
+      if (dataStr.length === 0) continue;
+      let data;
+      try {
+        data = JSON.parse(dataStr);
+      } catch {
+        continue;
+      }
+      if (event === "progress") handlers.onProgress(data);
+      else if (event === "result") handlers.onResult(data);
+      else if (event === "error") handlers.onError(data);
+    }
+  }
+}
+
+/** Offer a retry (re-open the modal) after a paid-mode failure. */
+function showRetry(order) {
+  els.status.hidden = false;
+  const retry = h("div", { class: "report__actions" });
+  const btn = h("button", { class: "btn btn--primary", text: "Try another key", attrs: { type: "button" } });
+  btn.addEventListener("click", () => openPayModal(order.tier, order.addresses));
+  retry.appendChild(btn);
+  els.status.appendChild(retry);
+}
 
 // ── Status / progress rendering ──────────────────────────────────────────────
 
 /** Render a flat status message list (used for validation + errors). */
-function showStatus(rows) {
+function showStatus(rows, append = false) {
   els.status.hidden = false;
-  els.status.innerHTML = "";
+  if (!append) els.status.innerHTML = "";
   for (const r of rows) {
     const row = h("div", { class: `status__row status__row--${r.state ?? "active"}` });
     row.appendChild(h("span", { class: "status__dot" }));
@@ -245,236 +607,44 @@ function showStatus(rows) {
   }
 }
 
-/** Render staged progress: steps before `current` are done, `current` is active, rest are pending. */
-function renderProgress(steps, current) {
+/** Render staged progress steps plus a live raw log underneath. */
+function renderProgressWithLog(steps, reached, log, opts = {}) {
   els.status.hidden = false;
   els.status.innerHTML = "";
+
+  // Determine the active (in-flight) step: first not-yet-reached step. When allDone, none is active.
+  let activeIdx = opts.allDone ? steps.length : steps.findIndex((s) => !reached.has(s.key));
+  if (activeIdx === -1) activeIdx = steps.length; // all done
+
   steps.forEach((step, i) => {
     let cls = "";
-    if (i < current) cls = "status__row--done";
-    else if (i === current) cls = "status__row--active";
+    if (i < activeIdx) cls = "status__row--done";
+    else if (i === activeIdx) cls = "status__row--active";
     const row = h("div", { class: `status__row ${cls}` });
     row.appendChild(h("span", { class: "status__dot" }));
     row.appendChild(h("span", { text: step.label }));
     els.status.appendChild(row);
   });
+
+  if (log.length > 0) {
+    const logBox = h("div", { class: "status__log" });
+    for (const entry of log) {
+      logBox.appendChild(
+        h("div", { class: `status__logline${entry.kind === "tx" ? " status__logline--tx" : ""}`, text: entry.line }),
+      );
+    }
+    els.status.appendChild(logBox);
+  }
 }
 
-// ── Report rendering ─────────────────────────────────────────────────────────
+// ── Report rendering (delegates to the shared module) ─────────────────────────
 
-/** Render the API response into the report section (single or multi-wallet). */
+/** Inline-render fallback used only when sessionStorage is unavailable (normally we navigate). */
 function renderReport(data) {
   els.status.hidden = true;
-  els.report.innerHTML = "";
-
-  const structured = data.structured;
-  const isMulti = structured && Array.isArray(structured.reports);
-
-  if (isMulti) {
-    els.report.appendChild(renderMultiSummary(structured, data));
-    for (const r of structured.reports) els.report.appendChild(renderSingle(r));
-  } else {
-    els.report.appendChild(renderSingle(structured));
-  }
-
-  els.report.appendChild(renderDecision(data.decision));
-
-  // Provenance line: order id, chain, and whether this was a paid CAP settlement or a free local run.
-  const provenance = h("div", { class: "report__provenance" });
-  const paidChip = data.paid
-    ? h("span", { class: "chip chip--paid", text: "Paid · settled on Base" })
-    : h("span", { class: "chip chip--free", text: "Free local audit (unpaid)" });
-  provenance.appendChild(paidChip);
-  provenance.appendChild(
-    h("span", {
-      class: "report__provtext",
-      text: `Order ${data.orderId ?? ""} · ${structured?.auditedChain ?? "Ethereum Mainnet"} · read-only`,
-    }),
-  );
-  els.report.appendChild(provenance);
-
-  if (data.fallbackReason) {
-    els.report.appendChild(h("p", { class: "report__note", text: data.fallbackReason }));
-  }
-
-  // Let users keep a copy of the machine-readable report.
-  const actions = h("div", { class: "report__actions" });
-  const dl = h("button", { class: "btn btn--pill-light", text: "Download JSON", attrs: { type: "button" } });
-  dl.addEventListener("click", () => downloadJson(structured, data.orderId));
-  actions.appendChild(dl);
-  els.report.appendChild(actions);
-
   els.reportSection.hidden = false;
+  renderReportInto(els.report, data);
   els.reportSection.scrollIntoView({ behavior: "smooth" });
-}
-
-/** Trigger a client-side download of the structured report JSON. */
-function downloadJson(structured, orderId) {
-  const blob = new Blob([JSON.stringify(structured, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `wallet-audit-${orderId ?? "report"}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/** Multi-wallet summary header. */
-function renderMultiSummary(multi, data) {
-  const card = h("div", { class: "report__card" });
-  card.appendChild(h("h3", { text: `Multi-wallet summary — ${multi.walletCount} wallet(s)` }));
-  const stats = h("div", { class: "report__stats" });
-  const scores = multi.reports.map((r) => r.healthScore);
-  const worst = Math.min(...scores);
-  stats.appendChild(stat(String(worst), "Lowest score"));
-  stats.appendChild(stat(String(multi.walletCount), "Wallets"));
-  stats.appendChild(stat(data?.tier ?? "MULTI", "Tier"));
-  card.appendChild(stats);
-  return card;
-}
-
-/** A single stat cell. */
-function stat(num, label) {
-  const el = h("div", { class: "stat" });
-  el.appendChild(h("span", { class: "stat__num", text: num }));
-  el.appendChild(h("span", { class: "stat__label", text: label }));
-  return el;
-}
-
-/** Render a single wallet's structured report. */
-function renderSingle(r) {
-  const frag = document.createDocumentFragment();
-
-  // Header: score ring + grade + risk badge + address.
-  const head = h("div", { class: "report__head" });
-  const pct = Math.max(0, Math.min(100, r.healthScore ?? 0));
-  const ring = pct >= 80 ? "var(--ok)" : pct >= 40 ? "var(--warn)" : "var(--crit)";
-  const score = h("div", { class: "score", attrs: { style: `--pct:${pct};--ring:${ring}` } });
-  score.appendChild(h("span", { class: "score__num", text: String(r.healthScore ?? "—") }));
-  score.appendChild(h("span", { class: "score__max", text: "/100" }));
-  head.appendChild(score);
-
-  const meta = h("div", { class: "report__headmeta" });
-  meta.appendChild(h("p", { class: "report__grade", text: gradeLabel(r.healthGrade) }));
-  meta.appendChild(h("p", { class: "report__addr", text: r.walletAddress ?? "" }));
-  const risk = r.riskLevelSummary ?? "LOW";
-  meta.appendChild(h("span", { class: `badge badge--${risk}`, text: `${risk} risk` }));
-  if (r.scoredOnIncompleteData) {
-    meta.appendChild(
-      h("p", { class: "report__addr", text: "⚠ Scored on partial data (a data source was unavailable)." }),
-    );
-  }
-  head.appendChild(meta);
-  frag.appendChild(head);
-
-  // Stats overview.
-  const statsCard = h("div", { class: "report__card" });
-  statsCard.appendChild(h("h3", { text: "Overview" }));
-  const stats = h("div", { class: "report__stats" });
-  const approvals = r.approvals ?? [];
-  const unlimited = approvals.filter((a) => a.isUnlimited).length;
-  stats.appendChild(stat(String(approvals.length), "Approvals"));
-  stats.appendChild(stat(String(unlimited), "Unlimited"));
-  stats.appendChild(stat(String((r.contractRisks ?? []).length), "Risky contracts"));
-  stats.appendChild(stat(String((r.txFindings ?? []).length), "Tx findings"));
-  statsCard.appendChild(stats);
-  frag.appendChild(statsCard);
-
-  // Revocation advice (the actionable part).
-  frag.appendChild(renderRevokeCard(r.revokeAdvice ?? []));
-
-  // Approvals detail.
-  frag.appendChild(renderApprovalsCard(approvals));
-
-  return frag;
-}
-
-/** Human-friendly grade label. */
-function gradeLabel(grade) {
-  const map = { EXCELLENT: "Excellent", GOOD: "Good", FAIR: "Fair", POOR: "Poor" };
-  return map[grade] ?? grade ?? "—";
-}
-
-/** Revocation advice card with revoke.cash-style links. */
-function renderRevokeCard(advice) {
-  const card = h("div", { class: "report__card" });
-  card.appendChild(h("h3", { text: "What to revoke" }));
-  if (advice.length === 0) {
-    card.appendChild(h("p", { class: "report__empty", text: "No revocation suggestions — nothing risky to revoke." }));
-    return card;
-  }
-  const list = h("ul", { class: "itemlist" });
-  for (const a of advice) {
-    const row = h("li", { class: "itemrow" });
-    const main = h("div", { class: "itemrow__main" });
-    const risk = a.riskLevel ?? "MEDIUM";
-    main.appendChild(h("p", { class: "itemrow__title", html: `<span class="badge badge--${risk}">${risk}</span> ${escapeHtml(prettyCategory(a.category))}` }));
-    const link = a.revokeLink ?? {};
-    main.appendChild(h("p", { class: "itemrow__sub", text: `token ${shortAddr(link.tokenContract)} → spender ${shortAddr(link.spenderOrOperator)}` }));
-    row.appendChild(main);
-    if (link.url) {
-      row.appendChild(h("a", { class: "itemrow__link", text: "Revoke ›", attrs: { href: link.url, target: "_blank", rel: "noopener noreferrer" } }));
-    }
-    list.appendChild(row);
-  }
-  card.appendChild(list);
-  return card;
-}
-
-/** Approvals detail card. */
-function renderApprovalsCard(approvals) {
-  const card = h("div", { class: "report__card" });
-  card.appendChild(h("h3", { text: "Token approvals" }));
-  if (approvals.length === 0) {
-    card.appendChild(h("p", { class: "report__empty", text: "No active approvals found." }));
-    return card;
-  }
-  const list = h("ul", { class: "itemlist" });
-  for (const a of approvals.slice(0, 25)) {
-    const row = h("li", { class: "itemrow" });
-    const main = h("div", { class: "itemrow__main" });
-    const title = a.isUnlimited ? "Unlimited approval" : "Approval";
-    const badge = a.isUnlimited ? `<span class="badge badge--HIGH">UNLIMITED</span> ` : "";
-    main.appendChild(h("p", { class: "itemrow__title", html: `${badge}${escapeHtml(title)} · ${escapeHtml(a.spenderLabel || "Unknown spender")}` }));
-    main.appendChild(h("p", { class: "itemrow__sub", text: `token ${shortAddr(a.tokenContract)} → ${shortAddr(a.spender)}` }));
-    row.appendChild(main);
-    list.appendChild(row);
-  }
-  card.appendChild(list);
-  if (approvals.length > 25) {
-    card.appendChild(h("p", { class: "report__empty", text: `+ ${approvals.length - 25} more in the full report.` }));
-  }
-  return card;
-}
-
-/** The A2A-style proceed/abort decision banner. */
-function renderDecision(decision) {
-  if (!decision) return document.createDocumentFragment();
-  const cls = decision.proceed ? "report__decision--proceed" : "report__decision--abort";
-  const label = decision.proceed ? "✓ Looks acceptable" : "✕ Caution advised";
-  const banner = h("div", { class: `report__decision ${cls}` });
-  banner.appendChild(h("strong", { text: `${label}. ` }));
-  banner.appendChild(h("span", { text: decision.reason ?? "" }));
-  return banner;
-}
-
-/** Make a category enum human-readable. */
-function prettyCategory(c) {
-  const map = {
-    UNLIMITED_APPROVAL: "Unlimited approval",
-    SUSPICIOUS_CONTRACT: "Suspicious contract",
-    HIGH_RISK_CONTRACT: "High-risk contract",
-  };
-  return map[c] ?? c ?? "Risk";
-}
-
-/** Escape user/report-derived strings before inserting as HTML. */
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────────

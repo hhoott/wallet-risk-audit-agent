@@ -26,11 +26,7 @@
  * never broadcasts a transaction; it only reads `Risk_Level` / `Health_Score` to gate a decision.
  */
 
-import type {
-  AuditReportStructured,
-  MultiWalletReport,
-  RiskLevel,
-} from "../models.js";
+import type { AuditReportStructured, MultiWalletReport, RiskLevel } from "../models.js";
 import { RISK_LEVEL_ORDER } from "../models.js";
 import { loadConfig } from "../config.js";
 
@@ -61,7 +57,11 @@ export interface RequesterDelivery {
  * `waitForOrderId` resolver) rather than re-implementing event plumbing in the core flow.
  */
 export interface RequesterCapClient {
-  negotiateOrder(req: { serviceId: string; requirements?: string; metadata?: string }): Promise<NegotiateResult>;
+  negotiateOrder(req: {
+    serviceId: string;
+    requirements?: string;
+    metadata?: string;
+  }): Promise<NegotiateResult>;
   payOrder(orderId: string): Promise<unknown>;
   getDelivery(orderId: string): Promise<RequesterDelivery>;
 }
@@ -116,7 +116,9 @@ export function decideFromReport(structured: AuditReportStructured): AuditDecisi
     const reasons: string[] = [];
     if (riskBlocks) reasons.push(`risk level is ${riskLevel}`);
     if (scoreBlocks) {
-      reasons.push(`health score ${healthScore} is below the threshold of ${HEALTH_SCORE_THRESHOLD}`);
+      reasons.push(
+        `health score ${healthScore} is below the threshold of ${HEALTH_SCORE_THRESHOLD}`,
+      );
     }
     return {
       proceed: false,
@@ -153,7 +155,8 @@ export function decideFromReports(reports: readonly AuditReportStructured[]): Au
   const decisions = reports.map(decideFromReport);
   const proceed = decisions.every((d) => d.proceed);
   const worstRisk = reports.reduce<RiskLevel>(
-    (worst, r) => (RISK_LEVEL_ORDER[r.riskLevelSummary] > RISK_LEVEL_ORDER[worst] ? r.riskLevelSummary : worst),
+    (worst, r) =>
+      RISK_LEVEL_ORDER[r.riskLevelSummary] > RISK_LEVEL_ORDER[worst] ? r.riskLevelSummary : worst,
     "LOW",
   );
   const lowestScore = reports.reduce<number>(
@@ -312,7 +315,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     throw new Error("Set CROO_TARGET_SERVICE_ID to the Service_ID of the audit Agent to hire.");
   }
   if (wallet === undefined || wallet.trim().length === 0) {
-    throw new Error("Provide a wallet to audit as the first CLI argument or via CROO_AUDIT_WALLET.");
+    throw new Error(
+      "Provide a wallet to audit as the first CLI argument or via CROO_AUDIT_WALLET.",
+    );
   }
   if (orderId === undefined || orderId.trim().length === 0) {
     throw new Error(
@@ -333,14 +338,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     orderId,
   });
 
-  // eslint-disable-next-line no-console
   console.info(`[requester] decision: proceed=${decision.proceed} — ${decision.reason}`);
 }
 
 // Entry-point guard: run main() only when this file is executed directly (not when imported).
 if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((err: unknown) => {
-    // eslint-disable-next-line no-console
     console.error(`[requester] failed: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
   });

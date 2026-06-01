@@ -82,13 +82,21 @@ export const DELIVERABLE_SCHEMA_FIELDS: { name: string; type: string; descriptio
   { name: "generatedAt", type: "string", description: "Report generation time (UTC ISO-8601)." },
   { name: "tier", type: "string", description: "Purchased tier (QUICK / FULL / MULTI)." },
   { name: "healthScore", type: "number", description: "Wallet health score 0-100." },
-  { name: "healthGrade", type: "string", description: "Qualitative grade (EXCELLENT/GOOD/FAIR/POOR)." },
+  {
+    name: "healthGrade",
+    type: "string",
+    description: "Qualitative grade (EXCELLENT/GOOD/FAIR/POOR).",
+  },
   { name: "riskLevelSummary", type: "string", description: "Machine-readable overall risk level." },
   { name: "approvals", type: "array", description: "Approval records." },
   { name: "contractRisks", type: "array", description: "Suspicious / high-risk contracts." },
   { name: "assets", type: "object", description: "Asset distribution (null when not in scope)." },
   { name: "txFindings", type: "array", description: "Failed / abnormal / high-risk interactions." },
-  { name: "revokeAdvice", type: "array", description: "Prioritized revocation suggestions with links." },
+  {
+    name: "revokeAdvice",
+    type: "array",
+    description: "Prioritized revocation suggestions with links.",
+  },
   { name: "moduleStatuses", type: "array", description: "Per-module completion status." },
 ];
 

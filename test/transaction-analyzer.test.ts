@@ -15,11 +15,7 @@ import {
   type AbnormalDetectionContext,
 } from "../src/modules/transaction-analyzer.js";
 import { MockChainDataSource, MockRiskRuleSource } from "../src/datasource/mock.js";
-import type {
-  ContractMeta,
-  RawInternalTx,
-  RawTransaction,
-} from "../src/datasource/types.js";
+import type { RawInternalTx, RawTransaction } from "../src/datasource/types.js";
 import type { Address, TxFindingReason } from "../src/models.js";
 
 // ── Shared constants / helpers ─────────────────────────────────────
@@ -292,19 +288,21 @@ describe("Transaction_Analyzer — failed & abnormal identification", () => {
   }
 
   // FAILED, isolated (median null so HIGH_GAS_FAILED cannot fire).
-  const failedScenarioArb: fc.Arbitrary<Scenario> = fc
-    .boolean()
-    .map((hit) => ({
-      tx: makeTx({ success: !hit ? true : false }),
-      ctx: neutralCtx(),
-      expected: hit ? (["FAILED"] as TxFindingReason[]) : [],
-    }));
+  const failedScenarioArb: fc.Arbitrary<Scenario> = fc.boolean().map((hit) => ({
+    tx: makeTx({ success: !hit ? true : false }),
+    ctx: neutralCtx(),
+    expected: hit ? (["FAILED"] as TxFindingReason[]) : [],
+  }));
 
   // DUST (a): inbound value < $1; null valueUsd is not dust.
   const dustScenarioArb: fc.Arbitrary<Scenario> = fc
     .oneof(
-      fc.double({ min: 0, max: 0.999, noNaN: true }).map((v) => ({ usd: v as number | null, hit: true })),
-      fc.double({ min: 1, max: 1000, noNaN: true }).map((v) => ({ usd: v as number | null, hit: false })),
+      fc
+        .double({ min: 0, max: 0.999, noNaN: true })
+        .map((v) => ({ usd: v as number | null, hit: true })),
+      fc
+        .double({ min: 1, max: 1000, noNaN: true })
+        .map((v) => ({ usd: v as number | null, hit: false })),
       fc.constant({ usd: null as number | null, hit: false }),
     )
     .map(({ usd, hit }) => ({
@@ -357,7 +355,7 @@ describe("Transaction_Analyzer — failed & abnormal identification", () => {
     })
     .map(({ median, delta, hit, missFactor }) => {
       const threshold = HIGH_GAS_MULTIPLIER * median;
-      const gas = hit ? threshold + delta : (missFactor % (threshold + 1n)); // miss ∈ [0, 3×median]
+      const gas = hit ? threshold + delta : missFactor % (threshold + 1n); // miss ∈ [0, 3×median]
       return {
         tx: makeTx({ success: false, gasFeeWei: gas.toString() }),
         ctx: neutralCtx({ failedGasMedianWei: median }),
@@ -427,9 +425,7 @@ describe("Transaction_Analyzer — invalid address rejection", () => {
       fc.hexaString({ minLength: 0, maxLength: 39 }).map((h) => `0x${h}`),
       fc.hexaString({ minLength: 41, maxLength: 80 }).map((h) => `0x${h}`),
       // correct length but contains a non-hex char
-      fc
-        .hexaString({ minLength: 39, maxLength: 39 })
-        .map((h) => `0x${h}z`),
+      fc.hexaString({ minLength: 39, maxLength: 39 }).map((h) => `0x${h}z`),
     )
     .filter((s) => !/^0x[0-9a-fA-F]{40}$/.test(s.trim()));
 
@@ -468,7 +464,7 @@ describe("Transaction_Analyzer — invalid address rejection", () => {
 // ── Unit tests: empty results, caps, retrieval failure, examples ───
 
 describe("Transaction_Analyzer — unit tests", () => {
-  it("returns the \"no high-risk interactions\" message when none are found (req 8.6)", async () => {
+  it('returns the "no high-risk interactions" message when none are found (req 8.6)', async () => {
     const chain = new MockChainDataSource({
       transactions: {
         [WALLET.toLowerCase()]: [
@@ -485,7 +481,7 @@ describe("Transaction_Analyzer — unit tests", () => {
     expect(result.highRiskMessage).toBe(NO_HIGH_RISK_INTERACTIONS_MESSAGE);
   });
 
-  it("returns the \"no failed or abnormal transactions\" message when none are found (req 10.4)", async () => {
+  it('returns the "no failed or abnormal transactions" message when none are found (req 10.4)', async () => {
     const chain = new MockChainDataSource({
       transactions: {
         [WALLET.toLowerCase()]: [
@@ -510,7 +506,7 @@ describe("Transaction_Analyzer — unit tests", () => {
     expect(result.failedAbnormalMessage).toBe(NO_FAILED_OR_ABNORMAL_TX_MESSAGE);
   });
 
-  it("returns both \"none found\" messages when the wallet has no transactions", async () => {
+  it('returns both "none found" messages when the wallet has no transactions', async () => {
     const chain = new MockChainDataSource();
     const rules = new MockRiskRuleSource();
     const analyzer = new TransactionAnalyzer({ chain, rules, now: () => FIXED_NOW });
@@ -533,7 +529,12 @@ describe("Transaction_Analyzer — unit tests", () => {
       },
       internalTxs: {
         [WALLET.toLowerCase()]: [
-          { txHash: "0xinternal", to: internalTo, valueWei: "0", timestamp: isoFromAgeDays(FIXED_NOW, 2) },
+          {
+            txHash: "0xinternal",
+            to: internalTo,
+            valueWei: "0",
+            timestamp: isoFromAgeDays(FIXED_NOW, 2),
+          },
         ],
       },
     });
@@ -562,7 +563,9 @@ describe("Transaction_Analyzer — unit tests", () => {
         makeTx({ txHash: `0xh${i}`, to, timestamp: isoFromAgeDays(FIXED_NOW, i + 1) }),
       );
     }
-    const chain = new MockChainDataSource({ transactions: { [WALLET.toLowerCase()]: transactions } });
+    const chain = new MockChainDataSource({
+      transactions: { [WALLET.toLowerCase()]: transactions },
+    });
     const rules = new MockRiskRuleSource(ruleEntries);
     const analyzer = new TransactionAnalyzer({ chain, rules, now: () => FIXED_NOW });
     // Use the full 365-day window so all 150 blacklisted txs (ages 1–150 days) fall within it.
@@ -578,10 +581,16 @@ describe("Transaction_Analyzer — unit tests", () => {
     const transactions: RawTransaction[] = [];
     for (let i = 0; i < 1200; i++) {
       transactions.push(
-        makeTx({ txHash: `0xn${i}`, to: addrFromIndex(i), timestamp: isoFromAgeDays(FIXED_NOW, 1) }),
+        makeTx({
+          txHash: `0xn${i}`,
+          to: addrFromIndex(i),
+          timestamp: isoFromAgeDays(FIXED_NOW, 1),
+        }),
       );
     }
-    const chain = new MockChainDataSource({ transactions: { [WALLET.toLowerCase()]: transactions } });
+    const chain = new MockChainDataSource({
+      transactions: { [WALLET.toLowerCase()]: transactions },
+    });
     const rules = new MockRiskRuleSource();
     const analyzer = new TransactionAnalyzer({ chain, rules, now: () => FIXED_NOW });
     const result = await analyzer.analyze(WALLET);

@@ -32,9 +32,7 @@ describe("RetryPolicy", () => {
             expect(result).toBe("ok");
             expect(attempts).toBe(successAtAttempt);
           } else {
-            await expect(policy.run(op, "test")).rejects.toBeInstanceOf(
-              DataSourceUnavailable,
-            );
+            await expect(policy.run(op, "test")).rejects.toBeInstanceOf(DataSourceUnavailable);
             expect(attempts).toBe(maxAttempts);
           }
           expect(attempts).toBeLessThanOrEqual(maxAttempts);

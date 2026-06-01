@@ -107,9 +107,7 @@ export function detectSuspiciousFeatures(
  *  - exactly 1 match → Suspicious_Contract
  *  - ≥2 matches → escalated to High_Risk_Contract (no longer merely suspicious)
  */
-export function classificationForFeatures(
-  matched: SuspiciousFeature[],
-): ContractClassification[] {
+export function classificationForFeatures(matched: SuspiciousFeature[]): ContractClassification[] {
   if (matched.length === 0) return [];
   if (matched.length === 1) return ["SUSPICIOUS"];
   return ["HIGH_RISK"];
@@ -226,10 +224,7 @@ export class RiskClassifier {
    * On success, updates the cache and returns { ok: true, contractRisks };
    * if any data source is unreachable, returns { ok: false, ... } and preserves the last successful result without overwriting it.
    */
-  async classifyForWallet(
-    wallet: Address,
-    spenders: Address[],
-  ): Promise<RiskClassificationResult> {
+  async classifyForWallet(wallet: Address, spenders: Address[]): Promise<RiskClassificationResult> {
     const now = this.now();
     const targets = uniqueAddresses(spenders);
     const risks: ContractRisk[] = [];

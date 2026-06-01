@@ -49,6 +49,8 @@ import type {
   MultiWalletAuditResult,
   PerWalletAuditResult,
 } from "../orchestrator.js";
+import type { AddressIntelOutcome } from "../modules/address-intel.js";
+import type { AddressInspection } from "../modules/address-inspector.js";
 
 // ── Minimal CAP client surface (exactly the SDK methods this layer uses) ────────────────
 
@@ -115,6 +117,10 @@ export interface AuditRunner {
     addresses: string[],
     options?: AuditWalletOptions,
   ): Promise<MultiWalletAuditResult>;
+  /** Optional extended target: vet an address / assess a counterparty (Address_Intel). */
+  vetAddress?(address: Address): Promise<AddressIntelOutcome>;
+  /** Optional type-aware inspection: detect type + gather type-specific facts. */
+  inspectAddress?(address: Address): Promise<AddressInspection>;
 }
 
 // ── Logging ─────────────────────────────────────────────────────────────────────────────
@@ -446,6 +452,15 @@ export class WalletAuditProvider {
   /** The settlement ledger holding records for delivered orders. */
   get settlementLedger(): SettlementLedger {
     return this.ledger;
+  }
+
+  /**
+   * The audit engine (AuditRunner) this Provider uses. Exposed so an in-process web/API portal can
+   * reuse the SAME engine — and the SAME single CAP connection / process — rather than opening a
+   * second connection or self-hiring over CAP.
+   */
+  get auditRunner(): AuditRunner {
+    return this.orchestrator;
   }
 
   /**

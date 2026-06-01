@@ -634,28 +634,33 @@ select.field__input {
 
 .score {
   --ring: var(--ok);
+  --pct: 0;
   flex: 0 0 120px;
   width: 120px;
   height: 120px;
   border-radius: 50%;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
   background:
-    radial-gradient(closest-side, var(--white) 79%, transparent 80% 100%),
-    conic-gradient(var(--ring) calc(var(--pct) * 1%), #e6e6eb 0);
+    radial-gradient(closest-side, var(--white) 78%, transparent 79% 100%),
+    conic-gradient(var(--ring) calc(var(--pct) * 3.6deg), #e6e6eb 0);
 }
 
 .score__num {
   font-family: var(--font-display);
-  font-size: 36px;
+  font-size: 34px;
   font-weight: 600;
   letter-spacing: -0.5px;
   line-height: 1;
 }
 
 .score__max {
-  font-size: 14px;
+  font-size: 12px;
   color: var(--black-48);
+  line-height: 1.2;
 }
 
 .report__headmeta {
@@ -996,4 +1001,471 @@ select.field__input {
 
 .btn--pill-light:hover {
   background: rgba(0, 102, 204, 0.06);
+}
+
+/* ── Payment modal ──────────────────────────────────────────────────────── */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal__card {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: var(--dark-surface-2);
+  color: var(--white);
+  border-radius: 18px;
+  padding: 32px 28px;
+  box-shadow: var(--card-shadow);
+}
+
+.modal__close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--white);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal__close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.modal__title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.modal__lead {
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.224px;
+  color: var(--white-80);
+  margin: 0 0 20px;
+}
+
+.field__label--dark {
+  color: var(--white);
+}
+
+.modal__lead code,
+.field__hint code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.92em;
+  color: var(--bright-blue);
+}
+
+.modal__summary {
+  font-family: var(--font-text);
+  font-size: 13px;
+  letter-spacing: -0.224px;
+  color: var(--white-64);
+  margin: 14px 0 20px;
+  min-height: 18px;
+}
+
+.modal__summary strong {
+  color: var(--white);
+}
+
+.modal__actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* ── Live log (raw CAP step stream) ─────────────────────────────────────── */
+.status__log {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--white-64);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.status__logline {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.status__logline--tx a {
+  color: var(--bright-blue);
+}
+
+@media (max-width: 480px) {
+  .modal__card {
+    padding: 24px 20px;
+  }
+  .modal__actions {
+    justify-content: stretch;
+  }
+  .modal__actions .btn {
+    flex: 1;
+  }
+}
+
+/* ── Modal tabs (payment method) ────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  padding: 4px;
+  margin: 18px 0 18px;
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--white-64);
+  font-family: var(--font-text);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.224px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tab--active {
+  background: var(--apple-blue);
+  color: var(--white);
+}
+
+.mm__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.mm__account {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: var(--bright-blue);
+}
+
+/* ── AI insight cards ───────────────────────────────────────────────────── */
+.report__card--ai {
+  border: 1px solid rgba(0, 113, 227, 0.25);
+}
+
+.ai-badge {
+  display: inline-block;
+  font-family: var(--font-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--white);
+  background: var(--apple-blue);
+  border-radius: 6px;
+  padding: 2px 7px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.prose {
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: -0.224px;
+  color: var(--near-black);
+}
+
+.prose h4 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+}
+
+.prose p {
+  margin: 0 0 10px;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 10px;
+  padding-left: 22px;
+}
+
+.prose li {
+  margin-bottom: 6px;
+}
+
+.prose code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  background: var(--light-gray);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.prose a {
+  color: var(--link-blue);
+}
+
+/* ── Address vetting tool (light section) ───────────────────────────────── */
+.vetform {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.vetform .field__label--dark {
+  color: var(--near-black);
+}
+
+.vetform .field__input {
+  color: var(--near-black);
+  background: var(--white);
+  border: 1px solid #d2d2d7;
+}
+
+.vetform .field__input::placeholder {
+  color: var(--black-48);
+}
+
+.vetresult {
+  max-width: 560px;
+  margin: 24px auto 0;
+  background: var(--white);
+  border-radius: 18px;
+  padding: 24px 28px;
+  box-shadow: var(--card-shadow);
+}
+
+.vetverdict {
+  display: inline-block;
+  font-family: var(--font-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding: 6px 14px;
+  border-radius: 980px;
+  color: var(--white);
+  margin-bottom: 12px;
+}
+
+.vetverdict--OFFICIAL { background: var(--ok); }
+.vetverdict--LIKELY_SAFE { background: #2f7d32; }
+.vetverdict--CAUTION { background: var(--warn); }
+.vetverdict--DANGEROUS { background: var(--crit); }
+.vetverdict--UNKNOWN { background: var(--black-48); }
+
+.vetresult__addr {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: var(--black-48);
+  word-break: break-all;
+  margin: 0 0 12px;
+}
+
+.vetresult__reasons {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.vetresult__reasons li {
+  font-family: var(--font-text);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.224px;
+  color: var(--black-80);
+  padding-left: 20px;
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.vetresult__reasons li::before {
+  content: "•";
+  position: absolute;
+  left: 4px;
+  color: var(--apple-blue);
+}
+
+.intel {
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  border-left: 4px solid #d2d2d7;
+  background: var(--light-gray);
+}
+
+/* Per-type accent colors. */
+.intel--EOA { border-left-color: #6e6e73; }
+.intel--ERC20 { border-left-color: #b8860b; }
+.intel--ERC721 { border-left-color: #8e44ad; }
+.intel--ERC1155 { border-left-color: #2980b9; }
+.intel--CONTRACT { border-left-color: #1d8a3f; }
+.intel--UNKNOWN { border-left-color: #b3261e; }
+
+.intel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.intel__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.intel__type {
+  font-family: var(--font-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.12px;
+  color: var(--near-black);
+  background: var(--white);
+  border-radius: 6px;
+  padding: 3px 9px;
+}
+
+.intel__label {
+  font-family: var(--font-text);
+  font-size: 12px;
+  color: var(--black-48);
+}
+
+.intel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.intel__chip {
+  font-family: var(--font-text);
+  font-size: 12px;
+  letter-spacing: -0.12px;
+  background: var(--white);
+  color: var(--black-80);
+  border-radius: 980px;
+  padding: 3px 10px;
+}
+
+.intel__chip--warn { background: #fff4e0; color: #8a5a00; }
+.intel__chip--ok { background: #e7f6ec; color: #11532a; }
+
+.intel__ai {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(0, 113, 227, 0.05);
+  border-radius: 10px;
+}
+
+/* ── Standalone result page ─────────────────────────────────────────────── */
+.report-page {
+  padding-top: 56px;
+}
+
+.report-page__head {
+  max-width: 760px;
+  margin: 0 auto 28px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.report-page__eyebrow {
+  font-family: var(--font-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.12px;
+  color: var(--apple-blue);
+  margin: 0 0 4px;
+}
+
+.report-page__title {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.report-page__sub {
+  font-family: var(--font-text);
+  font-size: 14px;
+  letter-spacing: -0.224px;
+  color: var(--black-48);
+  margin: 6px 0 0;
+}
+
+.report-page__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .report-page__title {
+    font-size: 32px;
+  }
+  .report-page__actions {
+    width: 100%;
+  }
+  .report-page__actions .btn {
+    flex: 1;
+    text-align: center;
+  }
+}
+
+/* ── Print / PDF ────────────────────────────────────────────────────────── */
+@media print {
+  .nav,
+  .footer,
+  .report-page__actions,
+  .report__actions {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .report-page {
+    padding: 0;
+  }
+  .report__card,
+  .report__head,
+  .intel,
+  .intel__ai {
+    box-shadow: none !important;
+    border: 1px solid #e6e6eb;
+    break-inside: avoid;
+  }
 }

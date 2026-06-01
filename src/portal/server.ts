@@ -4,18 +4,22 @@
  * Endpoints:
  *   GET  /                 → the single-page portal (responsive: phone + desktop).
  *   GET  /assets/*         → static CSS / JS for the page.
- *   GET  /api/tiers        → the bookable tiers (name, price, what-you-get) + which are configured.
- *   POST /api/orders       → place an order: validate input, hire the Provider over CAP, return
- *                            the structured report (managed-requester model).
+ *   GET  /api/tiers        → the tiers (name, price, what-you-get) + the payment mode.
+ *   POST /api/orders       → place an order. Two ways to call it (same core logic):
+ *                              • JSON (API):   returns the final JSON result in one response.
+ *                              • SSE (web UI): set { stream: true } to receive step-by-step progress
+ *                                              events, then a final "result" / "error" event.
  *   GET  /api/health       → liveness probe.
  *
- * The server holds a single {@link PortalRequester} (one CAP WebSocket) and serializes nothing —
- * concurrent orders are correlated by their CAP ids. All audit work happens in the live Provider;
- * this layer only places + pays orders and relays the deliverable.
+ * Payment: the caller supplies their OWN CROO key at pay time (field `crooKey`). With a key, the
+ * server runs a REAL CAP checkout as that Requester (negotiate → pay USDC → deliver) against our
+ * Provider, via {@link runCapCheckout}. The `paymentMode` gate decides what happens on failure:
+ *   - "free": fall back to the in-process local audit and still return a report.
+ *   - "paid": surface the payment error (e.g. 402) and ask the user to fix the key / top up.
+ * With no key, "free" runs a local audit and "paid" refuses with 402.
  *
- * Security: this server has NO authentication. It pays real USDC per order, so it must NOT be
- * exposed to the public internet as-is. Run it behind your own auth / rate limiting, or keep it on
- * localhost for a demo. This is surfaced in the README and logged at startup.
+ * Security: NO authentication / rate limiting. The user's CROO key is used only for that one
+ * checkout and is never persisted or logged. Keep the server on localhost or behind your own auth.
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -28,8 +32,15 @@ import { TIER_PRICE_USDC } from "../config.js";
 import { SERVICE_CATALOG } from "../services.js";
 import { validateAddresses } from "../modules/address-validator.js";
 import type { PortalConfig } from "./config.js";
-import { PortalRequester, PortalOrderError } from "./cap-requester.js";
 import type { LocalAuditor } from "./local-auditor.js";
+import {
+  runCapCheckout,
+  createCheckoutClient,
+  CheckoutError,
+  type CheckoutCapClient,
+  type CheckoutProgress,
+} from "./cap-checkout.js";
+import { MetaMaskPaymentVerifier, BASE_USDC_ADDRESS } from "./metamask-payment.js";
 
 const TIER_ORDER: readonly Tier[] = ["QUICK", "FULL", "MULTI"];
 
@@ -137,9 +148,8 @@ async function readJsonBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise
 
 // ── API handlers ─────────────────────────────────────────────────────────────────────────
 
-/** Build the tier catalog payload: pricing, highlights, and whether each tier is bookable. */
+/** Build the tier catalog payload: pricing, highlights, and the payment mode. */
 function buildTiersPayload(config: PortalConfig): unknown {
-  const isFree = config.paymentMode === "free";
   const tiers = TIER_ORDER.map((tier) => {
     const meta = SERVICE_CATALOG[tier];
     return {
@@ -149,37 +159,59 @@ function buildTiersPayload(config: PortalConfig): unknown {
       priceUsdc: TIER_PRICE_USDC[tier],
       highlights: TIER_HIGHLIGHTS[tier],
       multi: tier === "MULTI",
-      // A tier is bookable when its target Service_ID is configured. In free mode every tier is
-      // bookable too, since orders can fall back to a local read-only audit.
-      available: config.serviceIds[tier] !== undefined || isFree,
+      // The agent audits in-process, so every tier is always bookable from the web/API.
+      available: true,
+      serviceId: config.serviceIds[tier],
     };
   });
-  return { tiers, auditedChain: "Ethereum Mainnet", settlementChain: "Base (USDC)", paymentMode: config.paymentMode };
+  return {
+    tiers,
+    auditedChain: "Ethereum Mainnet",
+    settlementChain: "Base (USDC)",
+    paymentMode: config.paymentMode,
+    // Whether the web UI may show the "pay with a CROO agent key" tab (demo capability).
+    allowCrooKey: config.allowCrooKey,
+    // MetaMask direct-transfer payment info (present only when a payee is configured).
+    metamask: config.payeeAddress
+      ? {
+          enabled: true,
+          chain: "base",
+          chainId: 8453,
+          usdc: BASE_USDC_ADDRESS,
+          payee: config.payeeAddress,
+        }
+      : { enabled: false },
+  };
 }
 
-/** Validate the POST /api/orders payload into a tier + address list, or return an error message. */
-function parseOrderRequest(
-  body: unknown,
-  config: PortalConfig,
-): { tier: Tier; addresses: string[] } | { error: string } {
+/** Validate the POST /api/orders payload into a tier + address list + optional payment fields. */
+function parseOrderRequest(body: unknown):
+  | {
+      tier: Tier;
+      addresses: string[];
+      crooKey?: string;
+      payTxHash?: string;
+      method: "cap" | "metamask" | "none";
+      stream: boolean;
+    }
+  | { error: string } {
   if (typeof body !== "object" || body === null) {
     return { error: "Request body must be a JSON object." };
   }
-  const { tier, walletAddress, walletAddresses } = body as {
+  const { tier, walletAddress, walletAddresses, crooKey, payTxHash, method, stream } = body as {
     tier?: unknown;
     walletAddress?: unknown;
     walletAddresses?: unknown;
+    crooKey?: unknown;
+    payTxHash?: unknown;
+    method?: unknown;
+    stream?: unknown;
   };
 
   if (typeof tier !== "string" || !TIER_ORDER.includes(tier as Tier)) {
     return { error: "Field 'tier' must be one of QUICK, FULL, MULTI." };
   }
   const typedTier = tier as Tier;
-  // In paid mode a tier needs a configured Service_ID. In free mode a missing Service_ID is fine —
-  // the order will run as a local audit.
-  if (config.serviceIds[typedTier] === undefined && config.paymentMode !== "free") {
-    return { error: `The ${typedTier} tier is not configured on this portal.` };
-  }
 
   // Accept either a single address or a list; MULTI expects a list but a single is allowed too.
   let rawAddresses: string[];
@@ -199,39 +231,54 @@ function parseOrderRequest(
     const firstError = validation.results.find((r) => !r.valid)?.error;
     return { error: firstError ?? "No valid wallet address was provided." };
   }
-  // Non-MULTI tiers audit a single wallet; use the first valid address.
   const addresses =
     typedTier === "MULTI" ? validation.pendingAddresses : [validation.pendingAddresses[0]!];
-  return { tier: typedTier, addresses };
-}
 
-/** Map a PortalOrderError code to an HTTP status. */
-function statusForOrderError(code: PortalOrderError["code"]): number {
-  switch (code) {
-    case "TIMEOUT":
-      return 504;
-    case "NEGOTIATION_REJECTED":
-    case "ORDER_REJECTED":
-      return 422;
-    case "NEGOTIATION_EXPIRED":
-    case "ORDER_EXPIRED":
-      return 408;
-    case "NO_NEGOTIATION_ID":
-      return 502;
-  }
+  const key = typeof crooKey === "string" && crooKey.trim().length > 0 ? crooKey.trim() : undefined;
+  const tx =
+    typeof payTxHash === "string" && payTxHash.trim().length > 0 ? payTxHash.trim() : undefined;
+  // Resolve the payment method: explicit field wins, else infer from which credential is present.
+  let resolvedMethod: "cap" | "metamask" | "none";
+  if (method === "metamask" || (method === undefined && tx !== undefined))
+    resolvedMethod = "metamask";
+  else if (method === "cap" || (method === undefined && key !== undefined)) resolvedMethod = "cap";
+  else resolvedMethod = "none";
+
+  return {
+    tier: typedTier,
+    addresses,
+    crooKey: key,
+    payTxHash: tx,
+    method: resolvedMethod,
+    stream: stream === true,
+  };
 }
 
 // ── Server assembly ──────────────────────────────────────────────────────────────────────
 
-/** Dependencies for {@link createPortalServer}; the requester is injectable for tests. */
+/**
+ * Factory that builds a Requester-side CAP client from a user-supplied key. Injectable so tests can
+ * substitute a fake CAP client (no real SDK / network). Defaults to {@link createCheckoutClient}.
+ */
+export type CheckoutClientFactory = (crooKey: string) => Promise<CheckoutCapClient>;
+
+/** Verifies a MetaMask USDC payment by tx hash. Injectable for tests. */
+export interface PaymentVerifier {
+  verify(
+    txHash: string,
+    tier: Tier,
+  ): Promise<{ paid: boolean; reason: string; amountUsdc?: number }>;
+}
+
+/** Dependencies for {@link createPortalServer}. */
 export interface PortalServerDeps {
   config: PortalConfig;
-  requester: PortalRequester;
-  /**
-   * Local auditor used as the free-mode fallback when the CAP flow fails. Required when
-   * `config.paymentMode === "free"`; ignored in paid mode.
-   */
-  localAuditor?: LocalAuditor;
+  /** The in-process audit engine used as the free-mode fallback (and the local report source). */
+  auditor: LocalAuditor;
+  /** Builds a Requester CAP client from a user key; defaults to the real SDK-backed factory. */
+  checkoutClientFactory?: CheckoutClientFactory;
+  /** MetaMask USDC payment verifier; defaults to one built from config.payeeAddress when present. */
+  paymentVerifier?: PaymentVerifier;
   /** Logger; defaults to console. */
   logger?: { info(m: string): void; warn(m: string): void; error(m: string): void };
 }
@@ -248,20 +295,35 @@ function defaultLogger(): NonNullable<PortalServerDeps["logger"]> {
 /** Internal request context bundling everything the handlers need. */
 interface ServerCtx {
   config: PortalConfig;
-  requester: PortalRequester;
-  localAuditor: LocalAuditor | undefined;
+  auditor: LocalAuditor;
+  checkoutClientFactory: CheckoutClientFactory;
+  paymentVerifier: PaymentVerifier | undefined;
   logger: NonNullable<PortalServerDeps["logger"]>;
 }
 
 /**
  * Create the portal HTTP server (not yet listening). Returns the Node `http.Server` so the caller
- * controls `listen` / `close`. The audit Provider must be running and reachable over CAP.
+ * controls `listen` / `close`.
  */
 export function createPortalServer(deps: PortalServerDeps) {
+  const cfg = deps.config;
+  const verifier =
+    deps.paymentVerifier ??
+    (cfg.payeeAddress
+      ? new MetaMaskPaymentVerifier({ payeeAddress: cfg.payeeAddress, rpcUrl: cfg.baseRpcUrl })
+      : undefined);
   const ctx: ServerCtx = {
-    config: deps.config,
-    requester: deps.requester,
-    localAuditor: deps.localAuditor,
+    config: cfg,
+    auditor: deps.auditor,
+    checkoutClientFactory:
+      deps.checkoutClientFactory ??
+      ((crooKey: string) =>
+        createCheckoutClient(crooKey, {
+          crooApiUrl: cfg.crooApiUrl,
+          crooWsUrl: cfg.crooWsUrl,
+          rpcUrl: cfg.rpcUrl,
+        })),
+    paymentVerifier: verifier,
     logger: deps.logger ?? defaultLogger(),
   };
 
@@ -295,11 +357,19 @@ async function handleRequest(
     await handlePlaceOrder(req, res, ctx);
     return;
   }
+  if (method === "POST" && path === "/api/vet") {
+    await handleVet(req, res, ctx);
+    return;
+  }
 
   // Static assets + SPA shell.
   if (method === "GET") {
     if (path === "/" || path === "/index.html") {
       await sendStatic(res, "index.html");
+      return;
+    }
+    if (path === "/report" || path === "/report.html") {
+      await sendStatic(res, "report.html");
       return;
     }
     if (path.startsWith("/assets/")) {
@@ -311,13 +381,19 @@ async function handleRequest(
   sendJson(res, 404, { error: "Not found" });
 }
 
-/** Handle POST /api/orders: validate, place the CAP order, return the report. */
+/**
+ * Handle POST /api/orders. Two response shapes:
+ *   • `stream: true`  → Server-Sent Events: a series of `progress` events, then one `result` or
+ *                       `error` event (used by the web wizard / progress bar).
+ *   • otherwise        → a single JSON response (used by the plain API).
+ *
+ * Core logic is shared by {@link runOrder}; only the transport differs.
+ */
 async function handlePlaceOrder(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: ServerCtx,
 ): Promise<void> {
-  const { config, requester, logger } = ctx;
   let body: unknown;
   try {
     body = await readJsonBody(req);
@@ -326,95 +402,323 @@ async function handlePlaceOrder(
     return;
   }
 
-  const parsed = parseOrderRequest(body, config);
+  const parsed = parseOrderRequest(body);
   if ("error" in parsed) {
     sendJson(res, 400, { error: parsed.error });
     return;
   }
 
-  const serviceId = config.serviceIds[parsed.tier];
-  const isFree = config.paymentMode === "free";
-  logger.info(`Placing ${parsed.tier} order for ${parsed.addresses.length} wallet(s) (mode=${config.paymentMode})`);
+  if (parsed.stream) {
+    await handleOrderStream(res, ctx, parsed);
+  } else {
+    await handleOrderJson(res, ctx, parsed);
+  }
+}
 
-  // Free mode with no configured Service_ID: there is nothing to hire over CAP, so run a local
-  // read-only audit directly (skip the CAP attempt entirely).
-  if (isFree && serviceId === undefined) {
-    if (ctx.localAuditor === undefined) {
-      sendJson(res, 500, { error: "Free mode is on but no local auditor is configured." });
+/**
+ * Handle POST /api/vet — an extended audit target: vet an address's legitimacy / assess a
+ * counterparty's risk. Body: `{ "address": "0x…" }`. Read-only; free in all modes (it's a single
+ * cheap lookup — the premium value is the AI explanation when an LLM is configured).
+ */
+async function handleVet(req: IncomingMessage, res: ServerResponse, ctx: ServerCtx): Promise<void> {
+  let body: unknown;
+  try {
+    body = await readJsonBody(req);
+  } catch (err) {
+    sendJson(res, 400, { error: err instanceof Error ? err.message : "Bad request" });
+    return;
+  }
+  const address =
+    typeof (body as { address?: unknown })?.address === "string"
+      ? (body as { address: string }).address.trim()
+      : "";
+  const validation = validateAddresses([address]);
+  if (validation.rejected || validation.pendingAddresses.length === 0) {
+    const firstError = validation.results.find((r) => !r.valid)?.error;
+    sendJson(res, 400, { error: firstError ?? "Provide a valid 'address' (0x + 40 hex)." });
+    return;
+  }
+  try {
+    const result = await ctx.auditor.vetAddress(validation.pendingAddresses[0]!);
+    if (!result.ok) {
+      sendJson(res, 502, { error: result.reason ?? "Address vetting failed." });
       return;
     }
-    logger.info(`[free] No Service_ID for ${parsed.tier}; running a local audit directly.`);
+    sendJson(res, 200, { ok: true, intel: result.result, ai: result.ai });
+  } catch (err) {
+    ctx.logger.error(`Vet failed: ${err instanceof Error ? err.message : String(err)}`);
+    sendJson(res, 500, { error: "Address vetting could not be completed." });
+  }
+}
+
+/** The outcome of running an order, independent of transport. */
+interface OrderOutcome {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+/** Parameters shared by the two transports. */
+interface OrderParams {
+  tier: Tier;
+  addresses: string[];
+  crooKey?: string;
+  payTxHash?: string;
+  method: "cap" | "metamask" | "none";
+}
+
+/**
+ * Run an order end to end and return the final outcome, emitting progress via `onProgress`.
+ *
+ * Flow:
+ *  - If a `crooKey` is supplied, attempt a REAL CAP checkout as that Requester (negotiate → pay
+ *    USDC → deliver). On success, return the CAP-delivered report (paid: true) with the pay tx hash.
+ *  - On CAP failure (bad key, empty wallet, rejection, timeout):
+ *      · free mode → fall back to the in-process local audit (paid: false, paymentBypassed).
+ *      · paid mode → return the payment error (402) so the user can fix the key / top up.
+ *  - If NO `crooKey`:
+ *      · free mode → run the local audit (paid: false).
+ *      · paid mode → 402 asking for a key.
+ */
+async function runOrder(
+  ctx: ServerCtx,
+  params: OrderParams,
+  onProgress: (p: CheckoutProgress) => void,
+): Promise<OrderOutcome> {
+  const { config, logger } = ctx;
+  const isFree = config.paymentMode === "free";
+  const serviceId = config.serviceIds[params.tier];
+
+  logger.info(
+    `Order: ${params.tier} for ${params.addresses.length} wallet(s) ` +
+      `(mode=${config.paymentMode}, method=${params.method})`,
+  );
+
+  // ── MetaMask direct-transfer path (a Base USDC tx hash was supplied) ─────────────────
+  if (params.method === "metamask") {
+    onProgress({ step: "paying", message: "Verifying your USDC payment on Base…" });
+    if (ctx.paymentVerifier === undefined) {
+      if (isFree)
+        return localOutcome(
+          ctx,
+          params,
+          "MetaMask payments are not configured; served a free local audit.",
+        );
+      return {
+        status: 503,
+        body: {
+          error: "MetaMask payment is not configured on this portal (no payee address).",
+          code: "METAMASK_DISABLED",
+        },
+      };
+    }
+    if (params.payTxHash === undefined) {
+      return {
+        status: 400,
+        body: {
+          error: "Provide 'payTxHash' (the Base USDC payment transaction hash).",
+          code: "MISSING_TX",
+        },
+      };
+    }
+    let verified;
     try {
-      const local = await ctx.localAuditor.audit(parsed.tier, parsed.addresses);
-      sendJson(res, 200, {
-        orderId: local.orderId,
-        tier: parsed.tier,
+      verified = await ctx.paymentVerifier.verify(params.payTxHash, params.tier);
+    } catch (err) {
+      verified = {
         paid: false,
+        reason: `Could not verify the payment: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+    if (!verified.paid) {
+      if (isFree)
+        return localOutcome(
+          ctx,
+          params,
+          `Payment not verified (${verified.reason}); served a free local audit.`,
+        );
+      return { status: 402, body: { error: verified.reason, code: "PAYMENT_NOT_VERIFIED" } };
+    }
+    onProgress({
+      step: "paid",
+      message: "Payment verified; running the audit…",
+      txHash: params.payTxHash,
+    });
+    const local = await ctx.auditor.audit(params.tier, params.addresses);
+    return {
+      status: 200,
+      body: {
+        orderId: local.orderId,
+        tier: params.tier,
         mode: config.paymentMode,
-        fallbackReason: "Free mode: served a local read-only audit (no CAP payment).",
+        paid: true,
+        paymentMethod: "metamask",
+        payTxHash: params.payTxHash,
         structured: local.structured,
         humanReadable: local.humanReadable,
         decision: local.decision,
-      });
-    } catch (localErr) {
-      logger.error(
-        `[free] Local audit failed: ${localErr instanceof Error ? localErr.message : String(localErr)}`,
-      );
-      sendJson(res, 500, { error: "Free-mode local audit failed. Check the data-source API keys." });
-    }
-    return;
+        ai: local.ai,
+        addressIntel: local.addressIntel,
+      },
+    };
   }
 
-  try {
-    const result = await requester.placeOrder({
-      serviceId: serviceId!,
-      walletAddresses: parsed.addresses,
-      timeoutMs: config.orderTimeoutMs,
-    });
-    sendJson(res, 200, {
-      orderId: result.orderId,
-      tier: parsed.tier,
-      paid: true,
-      mode: config.paymentMode,
-      structured: result.structured,
-      humanReadable: result.humanReadable,
-      decision: result.decision,
-    });
-  } catch (err) {
-    // Free mode: when the paid CAP flow cannot complete, fall back to a local read-only audit so
-    // development/testing can still see a full report. NEVER enabled in production (paid is default).
-    if (isFree && ctx.localAuditor !== undefined) {
-      const code = err instanceof PortalOrderError ? err.code : "ERROR";
-      const detail = err instanceof Error ? err.message : String(err);
-      logger.warn(`[free] CAP flow failed (${code}); falling back to a local audit. Detail: ${detail}`);
-      try {
-        const local = await ctx.localAuditor.audit(parsed.tier, parsed.addresses);
-        sendJson(res, 200, {
-          orderId: local.orderId,
-          tier: parsed.tier,
-          paid: false,
-          mode: config.paymentMode,
-          fallbackReason: `CAP payment/delivery did not complete (${code}); served a free local audit.`,
-          structured: local.structured,
-          humanReadable: local.humanReadable,
-          decision: local.decision,
-        });
-        return;
-      } catch (localErr) {
-        logger.error(
-          `[free] Local audit fallback failed: ${localErr instanceof Error ? localErr.message : String(localErr)}`,
+  // ── Paid CAP checkout path (a key was supplied) ──────────────────────────────────────
+  if (params.method === "cap" && params.crooKey !== undefined) {
+    // Server-side enforcement of the demo-only CROO-key switch.
+    if (!config.allowCrooKey) {
+      if (isFree)
+        return localOutcome(
+          ctx,
+          params,
+          "CROO-key payment is disabled; served a free local audit.",
         );
-        sendJson(res, 500, { error: "Free-mode local audit failed. Check the data-source API keys." });
-        return;
+      return {
+        status: 403,
+        body: {
+          error: "Paying with a CROO agent key is disabled on this deployment.",
+          code: "CROO_KEY_DISABLED",
+        },
+      };
+    }
+    if (serviceId === undefined) {
+      // We cannot negotiate without knowing which CAP Service maps to this tier.
+      if (isFree)
+        return localOutcome(
+          ctx,
+          params,
+          "No Service_ID configured for this tier; served a free local audit.",
+        );
+      return {
+        status: 503,
+        body: {
+          error: `The ${params.tier} tier has no configured Service_ID, so a paid CAP order cannot be placed.`,
+          code: "SERVICE_NOT_CONFIGURED",
+        },
+      };
+    }
+    try {
+      const client = await ctx.checkoutClientFactory(params.crooKey);
+      const result = await runCapCheckout(
+        client,
+        { serviceId, walletAddresses: params.addresses, timeoutMs: config.orderTimeoutMs },
+        onProgress,
+      );
+      logger.info(`CAP checkout settled: order ${result.orderId} (tx ${result.payTxHash})`);
+      return {
+        status: 200,
+        body: {
+          orderId: result.orderId,
+          tier: params.tier,
+          mode: config.paymentMode,
+          paid: true,
+          payTxHash: result.payTxHash,
+          structured: result.structured,
+          humanReadable: result.humanReadable,
+          decision: result.decision,
+        },
+      };
+    } catch (err) {
+      const code = err instanceof CheckoutError ? err.code : "ERROR";
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`CAP checkout failed (${code}): ${message}`);
+      if (isFree) {
+        return localOutcome(
+          ctx,
+          params,
+          `Payment did not complete (${code}); served a free local audit. Detail: ${message}`,
+        );
       }
+      // Paid mode: surface the payment error so the user can re-enter the key / top up.
+      return {
+        status: code === "TIMEOUT" ? 504 : 402,
+        body: {
+          error: message,
+          code,
+          paymentStep: err instanceof CheckoutError ? err.step : undefined,
+        },
+      };
     }
-
-    if (err instanceof PortalOrderError) {
-      logger.warn(`Order failed (${err.code}): ${err.message}`);
-      sendJson(res, statusForOrderError(err.code), { error: err.message, code: err.code });
-      return;
-    }
-    logger.error(`Order error: ${err instanceof Error ? err.message : String(err)}`);
-    sendJson(res, 500, { error: "Failed to place the order. Please try again." });
   }
+
+  // ── No credential supplied ───────────────────────────────────────────────────────────
+  if (isFree) {
+    return localOutcome(ctx, params, "Free mode: served a local read-only audit (no payment).");
+  }
+  return {
+    status: 402,
+    body: {
+      error:
+        "Payment required: pay with a CROO key (crooKey) over CAP, or with MetaMask (method:'metamask' + payTxHash).",
+      code: "PAYMENT_REQUIRED",
+    },
+  };
+}
+
+/** Build an outcome from the in-process local audit (free-mode path). */
+async function localOutcome(
+  ctx: ServerCtx,
+  params: OrderParams,
+  note: string,
+): Promise<OrderOutcome> {
+  try {
+    const local = await ctx.auditor.audit(params.tier, params.addresses);
+    return {
+      status: 200,
+      body: {
+        orderId: local.orderId,
+        tier: params.tier,
+        mode: ctx.config.paymentMode,
+        paid: false,
+        paymentBypassed: true,
+        paymentNote: note,
+        structured: local.structured,
+        humanReadable: local.humanReadable,
+        decision: local.decision,
+        ai: local.ai,
+        addressIntel: local.addressIntel,
+      },
+    };
+  } catch (err) {
+    ctx.logger.error(`Local audit failed: ${err instanceof Error ? err.message : String(err)}`);
+    return {
+      status: 500,
+      body: { error: "The audit could not be completed. Please check the data-source API keys." },
+    };
+  }
+}
+
+/** JSON transport: run the order and send a single response. */
+async function handleOrderJson(
+  res: ServerResponse,
+  ctx: ServerCtx,
+  params: OrderParams,
+): Promise<void> {
+  // Progress is ignored for the plain API; only the final outcome is returned.
+  const outcome = await runOrder(ctx, params, () => {});
+  sendJson(res, outcome.status, outcome.body);
+}
+
+/** SSE transport: stream progress events, then a final `result` or `error` event. */
+async function handleOrderStream(
+  res: ServerResponse,
+  ctx: ServerCtx,
+  params: OrderParams,
+): Promise<void> {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+  });
+  const send = (event: string, data: unknown): void => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const outcome = await runOrder(ctx, params, (p) => send("progress", p));
+
+  if (outcome.status === 200) {
+    send("result", outcome.body);
+  } else {
+    send("error", outcome.body);
+  }
+  res.end();
 }

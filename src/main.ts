@@ -30,10 +30,7 @@ import { pathToFileURL } from "node:url";
 
 import { loadConfig, MissingConfigError, type RuntimeConfig } from "./config.js";
 import { resolveServiceTierMap } from "./services.js";
-import {
-  buildProvidersFromConfig,
-  type DataProviders,
-} from "./datasource/providers/index.js";
+import { buildProvidersFromConfig, type DataProviders } from "./datasource/providers/index.js";
 import { RetryPolicy } from "./datasource/retry.js";
 import { AuditOrchestrator } from "./orchestrator.js";
 import {

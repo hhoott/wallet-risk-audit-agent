@@ -24,9 +24,7 @@ function tierMap(entries: Array<[string, Tier]>): Map<string, Tier> {
 }
 
 /** Arbitrary EVM-ish address string (format depth not required here). */
-const addressArb = fc
-  .hexaString({ minLength: 40, maxLength: 40 })
-  .map((h) => "0x" + h);
+const addressArb = fc.hexaString({ minLength: 40, maxLength: 40 }).map((h) => "0x" + h);
 
 const tierArb = fc.constantFrom<Tier>(...ALL_TIERS);
 const moduleStateArb = fc.constantFrom<ModuleState>(...MODULE_STATES);
@@ -92,10 +90,7 @@ describe("Payment_Gateway", () => {
             }
           }
 
-          const decision: NegotiationDecision = decideNegotiation(
-            { serviceId, requirements },
-            map,
-          );
+          const decision: NegotiationDecision = decideNegotiation({ serviceId, requirements }, map);
 
           const isConfigured = map.has(serviceId);
           const hasWallets = parsedWallets.length > 0;
@@ -237,9 +232,7 @@ describe("Payment_Gateway", () => {
   });
 
   it("parseAuditRequirements accepts the single-wallet convenience shape", () => {
-    expect(parseAuditRequirements(JSON.stringify({ walletAddress: "0x123" }))).toEqual([
-      "0x123",
-    ]);
+    expect(parseAuditRequirements(JSON.stringify({ walletAddress: "0x123" }))).toEqual(["0x123"]);
   });
 
   it("parseAuditRequirements returns [] for undefined / blank / garbage payloads", () => {
@@ -268,11 +261,7 @@ describe("Payment_Gateway", () => {
   });
 
   it("someModuleSucceeded handles boolean, enum and ModuleStatus signals", () => {
-    const signals: ModuleSuccessSignal[] = [
-      false,
-      "FAILED",
-      { module: "x", status: "OK" },
-    ];
+    const signals: ModuleSuccessSignal[] = [false, "FAILED", { module: "x", status: "OK" }];
     expect(someModuleSucceeded(signals)).toBe(true);
     expect(someModuleSucceeded([false, "INCOMPLETE"])).toBe(false);
   });

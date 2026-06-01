@@ -24,6 +24,8 @@ export interface RiskListEntry {
   blacklisted: boolean;
   /** Optional human-readable label (e.g. "Uniswap V3 Router", "Fake Phishing"). */
   label?: string;
+  /** Whether this is a curated official / known-good address (used by Address_Intel vetting). */
+  official?: boolean;
 }
 
 /**
@@ -38,35 +40,42 @@ export interface RiskListEntry {
  */
 export const DEFAULT_RISK_LIST: readonly RiskListEntry[] = [
   // ── Well-known, non-malicious labels (help the Approval_Scanner render a readable spender) ──
+  // These are also marked `official` so Address_Intel can vet them as known-good addresses.
   {
     address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
     blacklisted: false,
     label: "Uniswap V2 Router",
+    official: true,
   },
   {
     address: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
     blacklisted: false,
     label: "Uniswap V3 Router",
+    official: true,
   },
   {
     address: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45",
     blacklisted: false,
     label: "Uniswap V3 Router 2",
+    official: true,
   },
   {
     address: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
     blacklisted: false,
     label: "Permit2",
+    official: true,
   },
   {
     address: "0x1111111254EEB25477B68fb85Ed929f73A960582",
     blacklisted: false,
     label: "1inch Aggregation Router V5",
+    official: true,
   },
   {
     address: "0xDef1C0ded9bec7F1a1670819833240f027b25EfF",
     blacklisted: false,
     label: "0x Exchange Proxy",
+    official: true,
   },
 
   // ── Known-malicious examples (drainer / phishing). EXTEND via an injected live feed. ──
@@ -85,9 +94,7 @@ const norm = (addr: string): string => addr.toLowerCase();
  * Build the lookup map from a risk list, keyed by lowercased address. Later entries override
  * earlier ones for the same address (so an injected feed can extend / correct the seed).
  */
-export function buildRiskIndex(
-  entries: readonly RiskListEntry[],
-): Map<string, RiskRuleEntry> {
+export function buildRiskIndex(entries: readonly RiskListEntry[]): Map<string, RiskRuleEntry> {
   const index = new Map<string, RiskRuleEntry>();
   for (const e of entries) {
     const key = norm(e.address);
@@ -96,6 +103,7 @@ export function buildRiskIndex(
       blacklisted: e.blacklisted,
     };
     if (e.label !== undefined) entry.label = e.label;
+    if (e.official !== undefined) entry.official = e.official;
     index.set(key, entry);
   }
   return index;
@@ -113,6 +121,7 @@ export function lookupInIndex(
   if (hit === undefined) return { contract, blacklisted: false };
   const result: RiskRuleEntry = { contract, blacklisted: hit.blacklisted };
   if (hit.label !== undefined) result.label = hit.label;
+  if (hit.official !== undefined) result.official = hit.official;
   return result;
 }
 

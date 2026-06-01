@@ -33,10 +33,7 @@ const allowanceArb: fc.Arbitrary<string> = fc.oneof(
   fc.bigInt({ min: 0n, max: UINT256_MAX }).map((v) => v.toString()),
 );
 
-const fungibleKindArb: fc.Arbitrary<ApprovalKind> = fc.constantFrom(
-  "ERC20",
-  "PERMIT2",
-);
+const fungibleKindArb: fc.Arbitrary<ApprovalKind> = fc.constantFrom("ERC20", "PERMIT2");
 
 const operatorKindArb: fc.Arbitrary<ApprovalKind> = fc.constantFrom(
   "ERC721_OPERATOR",
@@ -81,8 +78,7 @@ describe("Approval_Scanner — unlimited approval determination", () => {
     fc.assert(
       fc.property(anyApprovalArb, (raw) => {
         const expected =
-          raw.operatorApproved === true ||
-          BigInt(raw.allowance) >= UNLIMITED_ERC20_THRESHOLD;
+          raw.operatorApproved === true || BigInt(raw.allowance) >= UNLIMITED_ERC20_THRESHOLD;
         expect(isUnlimitedApproval(raw)).toBe(expected);
       }),
       { numRuns: 300 },
@@ -99,9 +95,9 @@ describe("Approval_Scanner — unlimited approval determination", () => {
     expect(
       isUnlimitedApproval({ ...base, allowance: (UNLIMITED_ERC20_THRESHOLD - 1n).toString() }),
     ).toBe(false);
-    expect(
-      isUnlimitedApproval({ ...base, allowance: UNLIMITED_ERC20_THRESHOLD.toString() }),
-    ).toBe(true);
+    expect(isUnlimitedApproval({ ...base, allowance: UNLIMITED_ERC20_THRESHOLD.toString() })).toBe(
+      true,
+    );
     expect(
       isUnlimitedApproval({ ...base, allowance: (UNLIMITED_ERC20_THRESHOLD + 1n).toString() }),
     ).toBe(true);
@@ -130,34 +126,31 @@ describe("Approval_Scanner — approval record field completeness", () => {
   // most recent update timestamp.
   it("Property 5: approval record field completeness", async () => {
     await fc.assert(
-      fc.asyncProperty(
-        fc.array(anyApprovalArb, { minLength: 1, maxLength: 20 }),
-        async (raws) => {
-          const ds = new MockChainDataSource({ approvals: { [TEST_ADDR.toLowerCase()]: raws } });
-          const scanner = new ApprovalScanner(ds);
-          const result = await scanner.scan(TEST_ADDR);
-          expect(result.status).toBe("OK");
-          if (result.status !== "OK") return;
+      fc.asyncProperty(fc.array(anyApprovalArb, { minLength: 1, maxLength: 20 }), async (raws) => {
+        const ds = new MockChainDataSource({ approvals: { [TEST_ADDR.toLowerCase()]: raws } });
+        const scanner = new ApprovalScanner(ds);
+        const result = await scanner.scan(TEST_ADDR);
+        expect(result.status).toBe("OK");
+        if (result.status !== "OK") return;
 
-          for (const rec of result.approvals) {
-            if (!rec.isUnlimited) continue;
-            // Completeness of the four fields.
-            expect(typeof rec.tokenContract).toBe("string");
-            expect(rec.tokenContract.length).toBeGreaterThan(0);
-            expect(typeof rec.spender).toBe("string");
-            expect(rec.spender.length).toBeGreaterThan(0);
-            expect(typeof rec.spenderLabel).toBe("string");
-            expect(rec.spenderLabel.length).toBeGreaterThan(0);
-            expect(typeof rec.lastUpdated).toBe("string");
-            expect(rec.lastUpdated.length).toBeGreaterThan(0);
-          }
-        },
-      ),
+        for (const rec of result.approvals) {
+          if (!rec.isUnlimited) continue;
+          // Completeness of the four fields.
+          expect(typeof rec.tokenContract).toBe("string");
+          expect(rec.tokenContract.length).toBeGreaterThan(0);
+          expect(typeof rec.spender).toBe("string");
+          expect(rec.spender.length).toBeGreaterThan(0);
+          expect(typeof rec.spenderLabel).toBe("string");
+          expect(rec.spenderLabel.length).toBeGreaterThan(0);
+          expect(typeof rec.lastUpdated).toBe("string");
+          expect(rec.lastUpdated.length).toBeGreaterThan(0);
+        }
+      }),
       { numRuns: 150 },
     );
   });
 
-  it("a spender without a label falls back to \"Unknown\"", async () => {
+  it('a spender without a label falls back to "Unknown"', async () => {
     const raws: RawApproval[] = [
       {
         tokenContract: TEST_ADDR,
@@ -186,38 +179,35 @@ describe("Approval_Scanner — failure does not overwrite the last successful re
   // overwritten. (This task only covers the Approval_Scanner half.)
   it("Property 7: data source failure does not overwrite the last successful result", async () => {
     await fc.assert(
-      fc.asyncProperty(
-        fc.array(anyApprovalArb, { minLength: 1, maxLength: 15 }),
-        async (raws) => {
-          const ds = new MockChainDataSource({ approvals: { [TEST_ADDR.toLowerCase()]: raws } });
-          const scanner = new ApprovalScanner(ds);
+      fc.asyncProperty(fc.array(anyApprovalArb, { minLength: 1, maxLength: 15 }), async (raws) => {
+        const ds = new MockChainDataSource({ approvals: { [TEST_ADDR.toLowerCase()]: raws } });
+        const scanner = new ApprovalScanner(ds);
 
-          // 1) Scan successfully first to establish the cache.
-          const first = await scanner.scan(TEST_ADDR);
-          expect(first.status).toBe("OK");
-          if (first.status !== "OK") return;
-          const snapshot = JSON.stringify(first.approvals);
+        // 1) Scan successfully first to establish the cache.
+        const first = await scanner.scan(TEST_ADDR);
+        expect(first.status).toBe("OK");
+        if (first.status !== "OK") return;
+        const snapshot = JSON.stringify(first.approvals);
 
-          // 2) Make the data source fail.
-          ds.fail.approvals = true;
-          const failed = await scanner.scan(TEST_ADDR);
-          expect(failed.status).toBe("FAILED");
-          if (failed.status !== "FAILED") return;
-          // The failure result returns the last successful cache, and its content is unchanged.
-          expect(failed.cached).not.toBeNull();
-          expect(JSON.stringify(failed.cached)).toBe(snapshot);
+        // 2) Make the data source fail.
+        ds.fail.approvals = true;
+        const failed = await scanner.scan(TEST_ADDR);
+        expect(failed.status).toBe("FAILED");
+        if (failed.status !== "FAILED") return;
+        // The failure result returns the last successful cache, and its content is unchanged.
+        expect(failed.cached).not.toBeNull();
+        expect(JSON.stringify(failed.cached)).toBe(snapshot);
 
-          // 3) The cache can still be read again, and the value has not been overwritten.
-          expect(JSON.stringify(scanner.getCached(TEST_ADDR))).toBe(snapshot);
+        // 3) The cache can still be read again, and the value has not been overwritten.
+        expect(JSON.stringify(scanner.getCached(TEST_ADDR))).toBe(snapshot);
 
-          // 4) Recover the data source → the cached value matches the first scan (verifying it was not corrupted).
-          ds.fail.approvals = false;
-          const recovered = await scanner.scan(TEST_ADDR);
-          expect(recovered.status).toBe("OK");
-          if (recovered.status !== "OK") return;
-          expect(JSON.stringify(recovered.approvals)).toBe(snapshot);
-        },
-      ),
+        // 4) Recover the data source → the cached value matches the first scan (verifying it was not corrupted).
+        ds.fail.approvals = false;
+        const recovered = await scanner.scan(TEST_ADDR);
+        expect(recovered.status).toBe("OK");
+        if (recovered.status !== "OK") return;
+        expect(JSON.stringify(recovered.approvals)).toBe(snapshot);
+      }),
       { numRuns: 100 },
     );
   });

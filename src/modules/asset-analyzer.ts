@@ -109,9 +109,7 @@ export async function analyzeAssets(
   // Main-asset candidates = native token (any valuation) + ERC-20 valued >= 1 USD.
   // Junk tokens = ERC-20 valued < 1 USD (requirement 9.5; the native token is not in this class).
   const isNative = (b: RawBalance): boolean => b.token === "NATIVE";
-  const mainCandidates = priced.filter(
-    (p) => isNative(p.balance) || p.usdValue >= MIN_DISPLAY_USD,
-  );
+  const mainCandidates = priced.filter((p) => isNative(p.balance) || p.usdValue >= MIN_DISPLAY_USD);
   const junk = priced.filter((p) => !isNative(p.balance) && p.usdValue < MIN_DISPLAY_USD);
 
   // Descending by USD (ties broken by token for a stable, deterministic order).
@@ -148,7 +146,13 @@ export async function analyzeAssets(
 
   // Items with unavailable valuation: still listed with their balance, usdValue / percentage = null (requirement 9.4).
   for (const b of unvalued) {
-    top.push({ token: b.token, symbol: b.symbol, balance: b.balance, usdValue: null, percentage: null });
+    top.push({
+      token: b.token,
+      symbol: b.symbol,
+      balance: b.balance,
+      usdValue: null,
+      percentage: null,
+    });
   }
 
   // "Other" aggregate item: the balance field carries the count of merged assets (the aggregate has no single token balance).

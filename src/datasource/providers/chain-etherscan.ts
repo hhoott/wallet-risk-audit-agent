@@ -44,7 +44,7 @@ import {
 import { mainnet } from "viem/chains";
 
 import { AUDITED_CHAIN_ID } from "../../config.js";
-import type { Address } from "../../models.js";
+import type { Address, AddressType } from "../../models.js";
 import type {
   ChainDataSource,
   ContractMeta,
@@ -52,6 +52,7 @@ import type {
   RawBalance,
   RawInternalTx,
   RawTransaction,
+  TokenContractInfo,
 } from "../types.js";
 import type { RetryPolicy } from "../retry.js";
 
@@ -62,6 +63,22 @@ export const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3" as A
 
 /** ERC-1155 ERC-165 interface id; used to distinguish operator approvals from ERC-721. */
 const ERC1155_INTERFACE_ID = "0xd9b67a26";
+/** ERC-721 ERC-165 interface id; used for address-type detection. */
+const ERC721_INTERFACE_ID = "0x80ac58cd";
+
+/** Minimal ERC-20 metadata ABI for type detection / token info (read-only). */
+const ERC20_META_ABI = parseAbi([
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+]);
+
+/** Common owner accessors found on many token contracts (read-only, best-effort). */
+const OWNER_ABI = parseAbi([
+  "function owner() view returns (address)",
+  "function getOwner() view returns (address)",
+]);
 
 /** Default public RPC used only when no RPC URL is injected (keyless, best-effort). */
 export const DEFAULT_ETH_RPC_URL = "https://cloudflare-eth.com";
@@ -250,9 +267,7 @@ const PERMIT2_ALLOWANCE_ABI = parseAbi([
 ]);
 
 /** ERC-165 supportsInterface, used to tell ERC-1155 operator approvals from ERC-721. */
-const ERC165_ABI = parseAbi([
-  "function supportsInterface(bytes4 interfaceId) view returns (bool)",
-]);
+const ERC165_ABI = parseAbi(["function supportsInterface(bytes4 interfaceId) view returns (bool)"]);
 
 // ── Provider options ────────────────────────────────────────────────────────────────────────
 
@@ -365,7 +380,7 @@ export class EtherscanChainDataSource implements ChainDataSource {
     ]);
     const nowIso = this.now().toISOString();
     const tsOf = (blockNumber: bigint | null): string =>
-      blockNumber !== null ? blockTime.get(blockNumber) ?? nowIso : nowIso;
+      blockNumber !== null ? (blockTime.get(blockNumber) ?? nowIso) : nowIso;
 
     const out: RawApproval[] = [];
 
@@ -519,7 +534,8 @@ export class EtherscanChainDataSource implements ChainDataSource {
         action: "getsourcecode",
         address: addr,
       });
-      verified = Array.isArray(source) && source.length > 0 && isVerifiedSource(source[0].SourceCode);
+      verified =
+        Array.isArray(source) && source.length > 0 && isVerifiedSource(source[0].SourceCode);
     } catch {
       verified = false;
     }
@@ -558,13 +574,170 @@ export class EtherscanChainDataSource implements ChainDataSource {
     };
   }
 
+  /**
+   * Detect the on-chain type of an address (read-only): EOA (no bytecode), then ERC-721 / ERC-1155
+   * via ERC-165 supportsInterface, then ERC-20 via a successful decimals() read, else CONTRACT.
+   */
+  async detectAddressType(address: Address): Promise<AddressType> {
+    const addr = this.normalize(address);
+    let code: string | undefined;
+    try {
+      code = await this.run(() => this.client.getCode({ address: addr }), "viem.getCode");
+    } catch {
+      return "UNKNOWN";
+    }
+    const isContract = code !== undefined && code !== "0x" && code !== "0x0";
+    if (!isContract) return "EOA";
+
+    // ERC-165 interface probes (NFTs).
+    if (await this.supportsInterface(addr, ERC721_INTERFACE_ID)) return "ERC721";
+    if (await this.isErc1155(addr)) return "ERC1155";
+
+    // ERC-20 heuristic: decimals() reads successfully.
+    const decimals = await this.readUintView(addr, ERC20_META_ABI, "decimals");
+    if (decimals !== null) return "ERC20";
+
+    return "CONTRACT";
+  }
+
+  /**
+   * Best-effort token-contract security signals (read-only). Reads ERC-20 metadata + an owner
+   * accessor, and infers mintable/pausable/blacklist from the verified ABI when available.
+   */
+  async getTokenContractInfo(contract: Address): Promise<TokenContractInfo> {
+    const addr = this.normalize(contract);
+    const [name, symbol, decimals, totalSupply, owner] = await Promise.all([
+      this.readStringView(addr, ERC20_META_ABI, "name"),
+      this.readStringView(addr, ERC20_META_ABI, "symbol"),
+      this.readUintView(addr, ERC20_META_ABI, "decimals"),
+      this.readUintView(addr, ERC20_META_ABI, "totalSupply"),
+      this.readOwner(addr),
+    ]);
+
+    // Inspect the verified ABI (if any) for dangerous function patterns.
+    let mintable = false;
+    let pausable = false;
+    let hasBlacklist = false;
+    try {
+      const fns = await this.fetchVerifiedFunctionNames(addr);
+      mintable = fns.some((n) => /mint/.test(n));
+      pausable = fns.some((n) => /(^|_)pause|setpaused|freeze/.test(n));
+      hasBlacklist = fns.some((n) => /(blacklist|blocklist|denylist|ban)/.test(n));
+    } catch {
+      /* ABI unavailable; leave inferred flags false */
+    }
+
+    return {
+      name,
+      symbol,
+      decimals: decimals === null ? null : Number(decimals),
+      totalSupply: totalSupply === null ? null : totalSupply.toString(),
+      hasOwner: owner !== null && owner !== "0x0000000000000000000000000000000000000000",
+      owner,
+      mintable,
+      pausable,
+      hasBlacklist,
+    };
+  }
+
+  /** ERC-165 supportsInterface probe (returns false on any error). */
+  private async supportsInterface(addr: Hex, interfaceId: string): Promise<boolean> {
+    try {
+      return await this.run(
+        () =>
+          this.client.readContract({
+            address: addr,
+            abi: ERC165_ABI,
+            functionName: "supportsInterface",
+            args: [hx(interfaceId)],
+          }) as Promise<boolean>,
+        "viem.readContract(supportsInterface)",
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /** Read a uint-returning view function; null on error. */
+  private async readUintView(
+    addr: Hex,
+    abi: typeof ERC20_META_ABI,
+    fn: string,
+  ): Promise<bigint | null> {
+    try {
+      return (await this.run(
+        () =>
+          this.client.readContract({
+            address: addr,
+            abi,
+            functionName: fn as never,
+          }) as Promise<bigint>,
+        `viem.readContract(${fn})`,
+      )) as bigint;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Read a string-returning view function; null on error. */
+  private async readStringView(
+    addr: Hex,
+    abi: typeof ERC20_META_ABI,
+    fn: string,
+  ): Promise<string | null> {
+    try {
+      return (await this.run(
+        () =>
+          this.client.readContract({
+            address: addr,
+            abi,
+            functionName: fn as never,
+          }) as Promise<string>,
+        `viem.readContract(${fn})`,
+      )) as string;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Try owner() then getOwner(); null when neither is present. */
+  private async readOwner(addr: Hex): Promise<Address | null> {
+    for (const fn of ["owner", "getOwner"]) {
+      try {
+        const o = (await this.run(
+          () =>
+            this.client.readContract({
+              address: addr,
+              abi: OWNER_ABI,
+              functionName: fn as never,
+            }) as Promise<string>,
+          `viem.readContract(${fn})`,
+        )) as string;
+        if (typeof o === "string" && o.startsWith("0x")) return o;
+      } catch {
+        /* try next */
+      }
+    }
+    return null;
+  }
+
+  /** Fetch the lowercased function names from a contract's verified ABI (Etherscan getabi). */
+  private async fetchVerifiedFunctionNames(addr: string): Promise<string[]> {
+    const abiJson = await this.fetchEtherscanResult<string>({
+      module: "contract",
+      action: "getabi",
+      address: addr,
+    });
+    if (typeof abiJson !== "string" || abiJson === "Contract source code not verified") return [];
+    const parsed = JSON.parse(abiJson) as Array<{ type?: string; name?: string }>;
+    return parsed
+      .filter((e) => e.type === "function" && typeof e.name === "string")
+      .map((e) => (e.name as string).toLowerCase());
+  }
+
   // ── viem read helpers (read-only contract calls) ────────────────────────────────────────────
 
-  private async readErc20Allowance(
-    token: Hex,
-    owner: Hex,
-    spender: Hex,
-  ): Promise<bigint | null> {
+  private async readErc20Allowance(token: Hex, owner: Hex, spender: Hex): Promise<bigint | null> {
     try {
       return await this.run(
         () =>
@@ -668,10 +841,7 @@ export class EtherscanChainDataSource implements ChainDataSource {
         continue;
       }
       try {
-        const code = await this.run(
-          () => this.client.getCode({ address: hx(a) }),
-          "viem.getCode",
-        );
+        const code = await this.run(() => this.client.getCode({ address: hx(a) }), "viem.getCode");
         map.set(a, code !== undefined && code !== "0x" && code !== "0x0");
       } catch {
         map.set(a, false);
@@ -744,11 +914,14 @@ export class EtherscanChainDataSource implements ChainDataSource {
   /** Fetch and unwrap an Etherscan v2 envelope, throwing on transport / API error statuses. */
   private async fetchEtherscanResult<T>(params: Record<string, string>): Promise<T> {
     const url = this.buildUrl(params);
-    const json = await this.run(async () => {
-      const res = await this.fetchImpl(url);
-      if (!res.ok) throw new Error(`Etherscan HTTP ${res.status}`);
-      return (await res.json()) as EtherscanEnvelope<T>;
-    }, `etherscan.${params.action ?? "request"}`);
+    const json = await this.run(
+      async () => {
+        const res = await this.fetchImpl(url);
+        if (!res.ok) throw new Error(`Etherscan HTTP ${res.status}`);
+        return (await res.json()) as EtherscanEnvelope<T>;
+      },
+      `etherscan.${params.action ?? "request"}`,
+    );
 
     // status "1" = OK; status "0" with the empty-results message is a benign empty list.
     if (json.status === "1") return json.result;

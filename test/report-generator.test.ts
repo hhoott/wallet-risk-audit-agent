@@ -262,9 +262,7 @@ describe("Report_Generator — report structure invariants and tier trimming", (
           for (const c of structured.contractRisks) expect(fullRisks.has(c)).toBe(true);
           // The QUICK approval set is exactly the unlimited subset of FULL.
           expect(structured.approvals).toEqual(full.approvals.filter((a) => a.isUnlimited));
-          expect(structured.contractRisks).toEqual(
-            full.contractRisks.filter(isHighRiskContract),
-          );
+          expect(structured.contractRisks).toEqual(full.contractRisks.filter(isHighRiskContract));
         } else {
           // FULL / MULTI: all provided module data is present unchanged.
           expect(structured.approvals).toEqual(inputs.approvals);
@@ -304,9 +302,24 @@ describe("Report_Generator — serialization round-trip", () => {
 describe("Report_Generator — unit tests", () => {
   it("computeRiskLevelSummary picks the maximum Risk_Level across findings", () => {
     const contractRisks: ContractRisk[] = [
-      { contract: addrFromIndex(1), riskLevel: "MEDIUM", classification: ["SUSPICIOUS"], matchedFeatures: [] },
-      { contract: addrFromIndex(2), riskLevel: "CRITICAL", classification: ["HIGH_RISK"], matchedFeatures: [] },
-      { contract: addrFromIndex(3), riskLevel: "LOW", classification: ["SUSPICIOUS"], matchedFeatures: [] },
+      {
+        contract: addrFromIndex(1),
+        riskLevel: "MEDIUM",
+        classification: ["SUSPICIOUS"],
+        matchedFeatures: [],
+      },
+      {
+        contract: addrFromIndex(2),
+        riskLevel: "CRITICAL",
+        classification: ["HIGH_RISK"],
+        matchedFeatures: [],
+      },
+      {
+        contract: addrFromIndex(3),
+        riskLevel: "LOW",
+        classification: ["SUSPICIOUS"],
+        matchedFeatures: [],
+      },
     ];
     const revokeAdvice: RevokeAdvice[] = [
       {
@@ -359,11 +372,30 @@ describe("Report_Generator — unit tests", () => {
         },
       ],
       contractRisks: [
-        { contract: addrFromIndex(6), riskLevel: "MEDIUM", classification: ["SUSPICIOUS"], matchedFeatures: [] },
-        { contract: addrFromIndex(7), riskLevel: "CRITICAL", classification: ["HIGH_RISK"], matchedFeatures: [] },
+        {
+          contract: addrFromIndex(6),
+          riskLevel: "MEDIUM",
+          classification: ["SUSPICIOUS"],
+          matchedFeatures: [],
+        },
+        {
+          contract: addrFromIndex(7),
+          riskLevel: "CRITICAL",
+          classification: ["HIGH_RISK"],
+          matchedFeatures: [],
+        },
       ],
-      assets: { unit: "USD", priceSource: "CoinGecko", pricedAt: "2024-01-01T00:00:00.000Z", top: [], other: null, empty: true },
-      txFindings: [{ txHash: addrFromIndex(8), timestamp: "2024-01-01T00:00:00.000Z", reason: "FAILED" }],
+      assets: {
+        unit: "USD",
+        priceSource: "CoinGecko",
+        pricedAt: "2024-01-01T00:00:00.000Z",
+        top: [],
+        other: null,
+        empty: true,
+      },
+      txFindings: [
+        { txHash: addrFromIndex(8), timestamp: "2024-01-01T00:00:00.000Z", reason: "FAILED" },
+      ],
       revokeAdvice: [],
       moduleStatuses: [],
     };
@@ -380,7 +412,12 @@ describe("Report_Generator — unit tests", () => {
     const inputs: AuditInputs = {
       walletAddress: addrFromIndex(1),
       tier: "FULL",
-      healthScore: { score: 100, grade: "EXCELLENT", deductions: [], scoredOnIncompleteData: false },
+      healthScore: {
+        score: 100,
+        grade: "EXCELLENT",
+        deductions: [],
+        scoredOnIncompleteData: false,
+      },
       approvals: [],
       contractRisks: [],
       assets: null,
@@ -401,7 +438,12 @@ describe("Report_Generator — unit tests", () => {
       buildStructuredReport({
         walletAddress: addrFromIndex(i),
         tier: "MULTI",
-        healthScore: { score: 90, grade: "EXCELLENT", deductions: [], scoredOnIncompleteData: false },
+        healthScore: {
+          score: 90,
+          grade: "EXCELLENT",
+          deductions: [],
+          scoredOnIncompleteData: false,
+        },
         approvals: [],
         contractRisks: [],
         assets: null,

@@ -88,6 +88,32 @@ export interface RiskRuleEntry {
   blacklisted: boolean;
   /** Human-readable label (e.g. "Uniswap V3 Router"); undefined if none. */
   label?: string;
+  /**
+   * Whether the curated list marks this as an official / known-good address (e.g. a well-known
+   * router, token, or project treasury). Used by Address_Intel's vetting verdict. Optional and
+   * defaults to false when absent, so existing rule sources stay backward-compatible.
+   */
+  official?: boolean;
+}
+
+/** Token-contract security signals (best-effort; fields are null when not determinable). */
+export interface TokenContractInfo {
+  /** ERC-20 metadata when readable. */
+  name: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  /** Total supply (decimal string) when readable. */
+  totalSupply: string | null;
+  /** Whether the contract exposes an owner()/getOwner() that is a non-zero address. */
+  hasOwner: boolean;
+  /** The owner address when readable (null otherwise). */
+  owner: Address | null;
+  /** Whether a mint-like function is present in the verified ABI (possible inflation risk). */
+  mintable: boolean;
+  /** Whether a pause-like function is present (transfers can be frozen). */
+  pausable: boolean;
+  /** Whether a blacklist-like function is present (addresses can be blocked). */
+  hasBlacklist: boolean;
 }
 
 /**
@@ -99,6 +125,16 @@ export interface ChainDataSource {
   getInternalTxs(addr: Address, windowDays: number): Promise<RawInternalTx[]>;
   getBalances(addr: Address): Promise<RawBalance[]>;
   getContractMeta(contract: Address): Promise<ContractMeta>;
+  /**
+   * Detect the on-chain type of an address (EOA / ERC20 / ERC721 / ERC1155 / CONTRACT). Optional so
+   * existing mock sources stay compatible; when absent, callers treat the type as UNKNOWN.
+   */
+  detectAddressType?(addr: Address): Promise<import("../models.js").AddressType>;
+  /**
+   * Read best-effort token-contract security signals (owner / mintable / pausable / blacklist).
+   * Optional; used by the token-specific analysis. Only meaningful for token contracts.
+   */
+  getTokenContractInfo?(contract: Address): Promise<TokenContractInfo>;
 }
 
 /** Price data source (USD valuation), with source name. */

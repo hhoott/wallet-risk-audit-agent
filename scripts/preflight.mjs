@@ -23,6 +23,12 @@ const VARS = [
   { name: "COINGECKO_API_KEY", required: false, manual: "H7-12 (CoinGecko key; optional, raises limits)", secret: true },
   { name: "CROO_API_URL", required: false, manual: "default https://api.croo.network" },
   { name: "CROO_WS_URL", required: false, manual: "default wss://api.croo.network/ws" },
+  { name: "PORTAL_PAYMENT_MODE", required: false, manual: "web/API payment gate: free (default) or paid" },
+  { name: "PORTAL_ALLOW_CROO_KEY", required: false, manual: "demo only: allow a user CROO key in the web UI (default off)" },
+  { name: "PORTAL_PAYEE_ADDRESS", required: false, manual: "enables the MetaMask USDC (Base) payment tab" },
+  { name: "LLM_API_KEY", required: false, manual: "optional AI insight (OpenAI-compatible); audit works without it", secret: true },
+  { name: "LLM_BASE_URL", required: false, manual: "LLM endpoint base URL (e.g. https://api.deepseek.com)" },
+  { name: "LLM_MODEL", required: false, manual: "LLM model name (e.g. deepseek-chat)" },
 ];
 
 /** Mask a value for display: never print secrets, only confirm presence + length. */

@@ -156,6 +156,54 @@
       </div>
     </footer>
 
+    <!-- Payment modal: collect the user's CROO key to pay over CAP -->
+    <div class="modal" id="pay-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pay-title">
+      <div class="modal__backdrop" data-close="1"></div>
+      <div class="modal__card" role="document">
+        <button class="modal__close" id="pay-close" type="button" aria-label="Close">×</button>
+        <h3 class="modal__title" id="pay-title">Pay for your audit</h3>
+        <div class="modal__summary" id="pay-summary"></div>
+
+        <!-- Payment method tabs -->
+        <div class="tabs" role="tablist" aria-label="Payment method">
+          <button class="tab tab--active" id="tab-croo" role="tab" type="button" aria-selected="true">CROO agent</button>
+          <button class="tab" id="tab-mm" role="tab" type="button" aria-selected="false">MetaMask</button>
+        </div>
+
+        <!-- CROO agent panel -->
+        <div class="tabpanel" id="panel-croo" role="tabpanel">
+          <p class="modal__lead" id="pay-lead">
+            Paste your CROO agent key to pay over CAP. Payment is in USDC from your agent's wallet;
+            the key is used only for this order and never stored.
+          </p>
+          <div class="field">
+            <label class="field__label field__label--dark" for="croo-key">CROO agent key</label>
+            <input class="field__input" id="croo-key" type="password" placeholder="croo_sk_…" autocomplete="off" spellcheck="false" />
+            <p class="field__hint">Starts with <code>croo_sk_</code>. Its AA wallet must hold enough USDC.</p>
+          </div>
+        </div>
+
+        <!-- MetaMask panel -->
+        <div class="tabpanel" id="panel-mm" role="tabpanel" hidden>
+          <p class="modal__lead">
+            Pay in USDC on <strong>Base</strong> from your own wallet. Connect MetaMask, confirm the
+            transfer, and we verify it on-chain before running the audit.
+          </p>
+          <div class="mm__row">
+            <button class="btn btn--pill-dark" id="mm-connect" type="button">Connect MetaMask</button>
+            <span class="mm__account" id="mm-account"></span>
+          </div>
+          <p class="field__hint" id="mm-payinfo"></p>
+          <p class="status__error" id="mm-error" hidden></p>
+        </div>
+
+        <div class="modal__actions">
+          <button class="btn btn--pill-dark" id="pay-skip" type="button" hidden>Skip &amp; preview free</button>
+          <button class="btn btn--primary" id="pay-confirm" type="button">Pay &amp; run audit</button>
+        </div>
+      </div>
+    </div>
+
     <script src="/assets/app.js" type="module"></script>
   </body>
 </html>

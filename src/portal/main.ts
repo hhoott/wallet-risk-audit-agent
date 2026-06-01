@@ -1,59 +1,59 @@
 /**
- * Portal entry point — wire the portal config, a CAP Requester (the portal's own funded Agent), and
- * the HTTP server into a runnable process that lets users place orders from a browser.
+ * Portal entry point — unified single-process model.
  *
- * Two-chain reminder: the audited chain is Ethereum Mainnet (read-only, done by the Provider); CAP
- * order settlement is USDC on Base, handled by the SDK + CAPVault. The portal Requester's AA wallet
- * funds each order it places on a user's behalf.
+ * The web UI + local API and the CAP agent run in ONE process and share ONE CAP WebSocket (owned by
+ * the Provider). The portal does NOT open its own CAP connection: when a user places an order via
+ * the web page or `POST /api/orders`, the SAME in-process audit engine runs the read-only audit
+ * directly. `PORTAL_PAYMENT_MODE` only gates whether the payment callback's result is enforced.
  *
- * Security: the portal pays real USDC and has NO built-in auth. Keep it on localhost or behind your
- * own auth / rate limiting for a demo. This is logged at startup.
+ * `startPortal` accepts an injected {@link LocalAuditor} (the audit engine, normally the agent's own
+ * orchestrator) and an optional {@link PaymentConfirmer}. When no auditor is injected it builds one
+ * from the real read-only data providers, so the portal can also run standalone for local testing.
  *
- * Required env (injected, never hard-coded):
- *  - PORTAL_CROO_SDK_KEY (or CROO_SDK_KEY)  MANUAL(H1-1): the portal Requester's funded Agent key.
- *  - SERVICE_ID_QUICK / _FULL / _MULTI      MANUAL(H1-2): the audit Provider's Service_IDs to hire.
- * Optional: PORTAL_PORT (default 8787), CROO_API_URL, CROO_WS_URL, RPC_URL, PORTAL_ORDER_TIMEOUT_MS,
- * PORTAL_PAYMENT_MODE (defaults to free fallback; set "paid" for strict settlement).
+ * Security: the portal has NO built-in auth / rate limiting. Keep it on localhost or behind your own
+ * auth for a demo. This is logged at startup.
  */
 
 import { pathToFileURL } from "node:url";
 import type { Server } from "node:http";
 
-import {
-  loadPortalConfig,
-  MissingPortalConfigError,
-  type PortalConfig,
-} from "./config.js";
-import {
-  PortalRequester,
-  createPortalCapClient,
-  type PortalCapClient,
-} from "./cap-requester.js";
-import { createPortalServer } from "./server.js";
-import {
-  OrchestratorLocalAuditor,
-  type LocalAuditor,
-} from "./local-auditor.js";
+import { loadPortalConfig, MissingPortalConfigError, type PortalConfig } from "./config.js";
+import { createPortalServer, type CheckoutClientFactory } from "./server.js";
+import { OrchestratorLocalAuditor, type LocalAuditor } from "./local-auditor.js";
 import { loadConfig } from "../config.js";
 import { buildProvidersFromConfig } from "../datasource/providers/index.js";
 import { RetryPolicy } from "../datasource/retry.js";
 import { AuditOrchestrator } from "../orchestrator.js";
+import { loadLlmConfig } from "../llm/config.js";
+import { createChatModel, AuditSkillSet } from "../llm/skills.js";
 
-/** Injection points for {@link buildPortal}; tests override them to avoid real network / SDK. */
+/** Injection points for {@link buildPortal} / {@link startPortal}. */
 export interface BuildPortalOptions {
   config?: PortalConfig;
-  capClient?: PortalCapClient;
-  /** Local auditor for free-mode fallback; built from real data providers when omitted in free mode. */
-  localAuditor?: LocalAuditor;
+  /** The in-process audit engine; built from real data providers when omitted. */
+  auditor?: LocalAuditor;
+  /** Builds a Requester CAP client from a user key; defaults to the real SDK-backed factory. */
+  checkoutClientFactory?: CheckoutClientFactory;
 }
 
 /**
- * Build a local auditor from the real read-only data providers (Ethereum Mainnet). Used as the
- * free-mode fallback so a report can be produced without a paid CAP order. Read-only.
+ * Build the optional AI skill set from the env-configured LLM. Returns undefined when no LLM is
+ * configured (the audit then runs without AI enrichment).
  */
-function buildLocalAuditor(): LocalAuditor {
-  // The Provider-side RuntimeConfig only needs CROO_SDK_KEY to load; in free mode it may be absent,
-  // so synthesize a minimal config (the data providers ignore the CAP fields entirely).
+async function buildSkills(): Promise<AuditSkillSet | undefined> {
+  const llm = loadLlmConfig();
+  if (!llm.enabled) return undefined;
+  const model = await createChatModel(llm);
+  return model ? new AuditSkillSet(model) : undefined;
+}
+
+/**
+ * Build an audit engine from the real read-only data providers (Ethereum Mainnet). Used when the
+ * portal runs standalone (no auditor injected). Read-only. Adds AI insight when an LLM is configured.
+ */
+async function buildAuditor(): Promise<LocalAuditor> {
+  // The Provider-side RuntimeConfig only needs CROO_SDK_KEY to load; the data providers ignore the
+  // CAP fields, so synthesize a minimal config when CROO_SDK_KEY is absent.
   const runtimeConfig = (() => {
     try {
       return loadConfig();
@@ -61,7 +61,7 @@ function buildLocalAuditor(): LocalAuditor {
       return {
         crooApiUrl: "https://api.croo.network",
         crooWsUrl: "wss://api.croo.network/ws",
-        crooSdkKey: "free-mode",
+        crooSdkKey: "portal-standalone",
       };
     }
   })();
@@ -73,109 +73,90 @@ function buildLocalAuditor(): LocalAuditor {
     rules: providers.rules,
     retry,
   });
-  return new OrchestratorLocalAuditor(orchestrator);
+  const skills = await buildSkills();
+  return new OrchestratorLocalAuditor(orchestrator, skills);
 }
 
-/** Build (but do not start) the portal: resolve config, construct the Requester + HTTP server. */
+/** Build (but do not start) the portal HTTP server. */
 export async function buildPortal(options: BuildPortalOptions = {}) {
   const config = options.config ?? loadPortalConfig();
-  const client = options.capClient ?? (await createPortalCapClient(config));
-  const requester = new PortalRequester(client, {
-    timeoutMs: config.orderTimeoutMs,
+  const auditor = options.auditor ?? (await buildAuditor());
+  const server = createPortalServer({
+    config,
+    auditor,
+    checkoutClientFactory: options.checkoutClientFactory,
   });
-
-  // In free mode, the portal follows the normal CAP flow first, then falls back to a local
-  // read-only audit when payment/delivery cannot complete.
-  const localAuditor =
-    config.paymentMode === "free"
-      ? (options.localAuditor ?? buildLocalAuditor())
-      : options.localAuditor;
-
-  const server = createPortalServer({ config, requester, localAuditor });
-  return { config, requester, server };
-}
-
-/** Names of the tiers that are bookable given the configured Service_IDs. */
-function bookableTiers(config: PortalConfig): string[] {
-  return Object.keys(config.serviceIds);
+  return { config, server };
 }
 
 /** Local URLs surfaced at startup so users know where to open the browser. */
 function localPortalUrls(config: PortalConfig): { frontend: string; api: string; health: string } {
   const base = `http://localhost:${config.port}`;
-  return {
-    frontend: base,
-    api: `${base}/api`,
-    health: `${base}/api/health`,
-  };
+  return { frontend: base, api: `${base}/api`, health: `${base}/api/health` };
 }
 
 /** A started Portal plus useful URLs and a shutdown hook. */
 export interface StartedPortal {
   config: PortalConfig;
-  requester: PortalRequester;
   server: Server;
   urls: { frontend: string; api: string; health: string };
   stop(done?: () => void): void;
 }
 
-/** Build and start the portal without taking over process lifetime. */
+/**
+ * Build and start the portal HTTP server without taking over process lifetime. Rejects (instead of
+ * crashing the process) when the port is already in use, so the caller can handle it.
+ */
 export async function startPortal(options: BuildPortalOptions = {}): Promise<StartedPortal> {
-  const { config, requester, server } = await buildPortal(options);
+  const { config, server } = await buildPortal(options);
 
-  // Connect the CAP WebSocket up front so the first order is fast (and fails fast if misconfigured).
-  // In free mode, a missing/invalid key may make this fail — that is tolerated, since orders fall
-  // back to a local audit; placeOrder will retry the connection on demand.
-  try {
-    await requester.connect();
-  } catch (err) {
-    if (config.paymentMode === "free") {
-      console.warn(
-        `[portal] CAP connection failed in free mode (will use local audit): ${err instanceof Error ? err.message : String(err)}`,
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: NodeJS.ErrnoException): void => {
+      server.off("error", onError);
+      reject(
+        err.code === "EADDRINUSE"
+          ? new Error(`Port ${config.port} is already in use. Set PORTAL_PORT to a free port.`)
+          : err,
       );
-    } else {
-      throw err;
-    }
-  }
-
-  await new Promise<void>((resolve) => {
-    server.listen(config.port, () => resolve());
+    };
+    server.on("error", onError);
+    server.listen(config.port, () => {
+      server.off("error", onError);
+      resolve();
+    });
   });
 
-  const tiers = bookableTiers(config);
   const urls = localPortalUrls(config);
   console.info(`[portal] Frontend URL: ${urls.frontend}`);
-  console.info(`[portal] API base URL: ${urls.api}`);
+  console.info(`[portal] API base URL: ${urls.api}  (POST ${urls.api}/orders)`);
   console.info(`[portal] Health check: ${urls.health}`);
   console.info(`[portal] Payment mode: ${config.paymentMode.toUpperCase()}`);
-  console.info(
-    `[portal] Bookable tiers: ${tiers.length > 0 ? tiers.join(", ") : "(none configured)"}`,
-  );
   if (config.paymentMode === "free") {
     console.warn(
-      "[portal] FREE MODE is on: the portal tries the normal CAP paid flow first, but if payment " +
-        "or delivery can't complete it serves a local read-only audit instead. For demos only — " +
-        "set PORTAL_PAYMENT_MODE=paid for production.",
+      "[portal] FREE MODE: if a CAP payment can't complete (no key / bad key / empty wallet), the " +
+        "portal still returns a local read-only audit. For development/testing only; set " +
+        "PORTAL_PAYMENT_MODE=paid to require a successful CAP payment.",
+    );
+  } else {
+    console.info(
+      "[portal] PAID MODE: orders require the caller's CROO key and a successful CAP USDC payment " +
+        "(402 otherwise).",
     );
   }
   console.warn(
-    "[portal] SECURITY: this portal pays real USDC per order and has NO authentication. " +
-      "Keep it on localhost or behind your own auth / rate limiting — do not expose it publicly as-is.",
+    "[portal] SECURITY: the portal has NO authentication / rate limiting. Keep it on localhost or " +
+      "behind your own auth — do not expose it publicly as-is.",
   );
 
   return {
     config,
-    requester,
     server,
     urls,
-    stop: (done) => {
-      requester.close();
-      server.close(done);
-    },
+    stop: (done) => server.close(done),
   };
 }
 
-/** Build and start the portal, connecting the CAP WebSocket and listening for HTTP requests. */
+/** Build and start the portal, listening for HTTP requests (standalone process). */
 export async function main(): Promise<void> {
   try {
     const portal = await startPortal();

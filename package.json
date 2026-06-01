@@ -1,18 +1,49 @@
 {
   "name": "wallet-risk-audit-agent",
   "version": "0.1.0",
-  "description": "钱包风险体检 Agent — 只读链上安全分析服务，作为 CAP Provider 通过 CROO Agent Protocol 提供按次付费的钱包安全审计",
+  "description": "Read-only on-chain wallet risk audit agent for the CROO Agent Protocol (CAP). Hireable agent-to-agent over CAP, callable as an HTTP API, and usable through a bundled web UI.",
   "license": "MIT",
+  "author": "65159328 <65159328@qq.com>",
   "type": "module",
-  "engines": {
-    "node": ">=18"
+  "keywords": [
+    "croo",
+    "cap",
+    "agent",
+    "a2a",
+    "web3",
+    "ethereum",
+    "wallet-security",
+    "defi",
+    "risk-audit",
+    "read-only",
+    "langchain"
+  ],
+  "homepage": "https://github.com/hhoott/wallet-risk-audit-agent#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hhoott/wallet-risk-audit-agent.git"
   },
+  "bugs": {
+    "url": "https://github.com/hhoott/wallet-risk-audit-agent/issues"
+  },
+  "engines": {
+    "node": ">=18.20"
+  },
+  "files": [
+    "dist",
+    "src",
+    "docs",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc && node scripts/copy-portal-assets.mjs",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
     "start": "node --env-file-if-exists=.env dist/app.js",
     "dev": "npm run build && node --env-file-if-exists=.env dist/app.js",
@@ -24,16 +55,22 @@
   },
   "dependencies": {
     "@croo-network/sdk": "^0.2.1",
+    "@langchain/core": "^1.1.48",
+    "@langchain/openai": "^1.4.7",
+    "langchain": "^1.4.2",
     "viem": "^2.21.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@types/node": "^22.10.0",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.17.0",
     "fast-check": "^3.23.0",
+    "globals": "^15.15.0",
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.60.0",
     "vitest": "^2.1.0"
   }
 }

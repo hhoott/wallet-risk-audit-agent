@@ -93,10 +93,7 @@ export function isOperatorKind(kind: ApprovalKind): boolean {
  * Permit2 allowances and ERC-721 / ERC-1155 operator approvals — for operator approvals the
  * address is the operator and `token` is the NFT contract (no allowance amount is encoded).
  */
-export function buildRevokeUrl(
-  spenderOrOperator: Address,
-  tokenContract: Address,
-): string {
+export function buildRevokeUrl(spenderOrOperator: Address, tokenContract: Address): string {
   return `https://revoke.cash/address/${spenderOrOperator}?chainId=${AUDITED_CHAIN_ID}&token=${tokenContract}`;
 }
 
@@ -129,9 +126,7 @@ function sortAllowance(record: ApprovalRecord): string {
 }
 
 /** Index contract risks by lowercase contract address (first occurrence wins; spenders are unique upstream). */
-function indexContractRisks(
-  contractRisks: readonly ContractRisk[],
-): Map<string, ContractRisk> {
+function indexContractRisks(contractRisks: readonly ContractRisk[]): Map<string, ContractRisk> {
   const map = new Map<string, ContractRisk>();
   for (const risk of contractRisks) {
     const key = lower(risk.contract);

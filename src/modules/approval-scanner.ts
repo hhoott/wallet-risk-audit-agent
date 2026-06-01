@@ -69,10 +69,7 @@ export interface ApprovalScanFailed {
 }
 
 /** Approval scan result (discriminated union, judge by `status`). */
-export type ApprovalScanResult =
-  | ApprovalScanOk
-  | ApprovalScanEmpty
-  | ApprovalScanFailed;
+export type ApprovalScanResult = ApprovalScanOk | ApprovalScanEmpty | ApprovalScanFailed;
 
 // ── Pure determination / mapping functions ────────────────────────
 

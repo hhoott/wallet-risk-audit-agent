@@ -27,7 +27,7 @@ import type {
   RawTransaction,
   ContractMeta,
 } from "../src/datasource/types.js";
-import type { Address, ModuleState, ModuleStatus, Tier } from "../src/models.js";
+import type { Address, ModuleState, ModuleStatus } from "../src/models.js";
 import { DEFAULT_TX_WINDOW_DAYS, MULTI_TX_WINDOW_DAYS } from "../src/config.js";
 
 // ── Helpers & fixtures ──────────────────────────────────────────────
@@ -123,10 +123,7 @@ const invalidAddrArb: fc.Arbitrary<string> = fc.oneof(
  */
 const submittedListArb: fc.Arbitrary<string[]> = fc
   .array(
-    fc.oneof(
-      { weight: 3, arbitrary: validAddrArb },
-      { weight: 2, arbitrary: invalidAddrArb },
-    ),
+    fc.oneof({ weight: 3, arbitrary: validAddrArb }, { weight: 2, arbitrary: invalidAddrArb }),
     { minLength: 0, maxLength: 18 },
   )
   .map((list) => {
@@ -410,7 +407,12 @@ describe("Audit Orchestrator — tier routing", () => {
     const rec = new RecordingChainDataSource(new MockChainDataSource());
     const price = new MockPriceDataSource({ native: 2000 });
     const rules = new MockRiskRuleSource();
-    const orchestrator = new AuditOrchestrator({ chain: rec, price, rules, now: () => new Date(ISO) });
+    const orchestrator = new AuditOrchestrator({
+      chain: rec,
+      price,
+      rules,
+      now: () => new Date(ISO),
+    });
 
     const { report, statuses } = await orchestrator.auditWallet(WALLET, "QUICK");
 
@@ -434,7 +436,12 @@ describe("Audit Orchestrator — tier routing", () => {
     const rec = new RecordingChainDataSource(new MockChainDataSource());
     const price = new MockPriceDataSource({ native: 2000 });
     const rules = new MockRiskRuleSource();
-    const orchestrator = new AuditOrchestrator({ chain: rec, price, rules, now: () => new Date(ISO) });
+    const orchestrator = new AuditOrchestrator({
+      chain: rec,
+      price,
+      rules,
+      now: () => new Date(ISO),
+    });
 
     const { report, statuses } = await orchestrator.auditWallet(WALLET, "FULL");
 
@@ -500,15 +507,37 @@ describe("Audit Orchestrator — buildRiskItems mapping", () => {
         },
       ],
       [
-        { contract: addrFromIndex(2), riskLevel: "HIGH", classification: ["HIGH_RISK"], matchedFeatures: ["BLACKLISTED", "NO_AUDIT"] },
-        { contract: addrFromIndex(5), riskLevel: "MEDIUM", classification: ["SUSPICIOUS"], matchedFeatures: ["NO_AUDIT"] },
+        {
+          contract: addrFromIndex(2),
+          riskLevel: "HIGH",
+          classification: ["HIGH_RISK"],
+          matchedFeatures: ["BLACKLISTED", "NO_AUDIT"],
+        },
+        {
+          contract: addrFromIndex(5),
+          riskLevel: "MEDIUM",
+          classification: ["SUSPICIOUS"],
+          matchedFeatures: ["NO_AUDIT"],
+        },
       ],
-      [{ txHash: "0xdeadbeef", timestamp: ISO, reason: "HIGH_RISK_INTERACTION", contract: addrFromIndex(2) }],
+      [
+        {
+          txHash: "0xdeadbeef",
+          timestamp: ISO,
+          reason: "HIGH_RISK_INTERACTION",
+          contract: addrFromIndex(2),
+        },
+      ],
     );
 
     const categories = items.map((i) => i.category).sort();
     expect(categories).toEqual(
-      ["HIGH_RISK_CONTRACT", "HIGH_RISK_INTERACTION", "SUSPICIOUS_CONTRACT", "UNLIMITED_APPROVAL"].sort(),
+      [
+        "HIGH_RISK_CONTRACT",
+        "HIGH_RISK_INTERACTION",
+        "SUSPICIOUS_CONTRACT",
+        "UNLIMITED_APPROVAL",
+      ].sort(),
     );
     // Only the unlimited approval contributes an UNLIMITED_APPROVAL item.
     expect(items.filter((i) => i.category === "UNLIMITED_APPROVAL")).toHaveLength(1);

@@ -21,12 +21,7 @@
 
 import type { Tier } from "../config.js";
 import { TIER_PRICE_USDC } from "../config.js";
-import type {
-  Address,
-  ModuleState,
-  ModuleStatus,
-  SettlementRecord,
-} from "../models.js";
+import type { Address, ModuleState, ModuleStatus, SettlementRecord } from "../models.js";
 
 // ── Negotiation decision (task 14.2, Property 3, requirements 2.2 / 2.6) ───────────────
 
@@ -85,9 +80,7 @@ export function parseAuditRequirements(payload: string | undefined): Address[] {
   }
 
   // Keep only non-empty, non-blank strings; deeper format validation happens in Address_Validator.
-  return candidates.filter(
-    (x): x is string => typeof x === "string" && x.trim().length > 0,
-  );
+  return candidates.filter((x): x is string => typeof x === "string" && x.trim().length > 0);
 }
 
 /**
@@ -118,7 +111,7 @@ export function decideNegotiation(
     return {
       action: "REJECT",
       reason:
-        "Missing required parameters: requirements must be a JSON payload containing a non-empty walletAddresses list (e.g. {\"walletAddresses\":[\"0x..\"]}).",
+        'Missing required parameters: requirements must be a JSON payload containing a non-empty walletAddresses list (e.g. {"walletAddresses":["0x.."]}).',
     };
   }
 

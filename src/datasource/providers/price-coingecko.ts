@@ -126,9 +126,7 @@ export class CoinGeckoPriceDataSource implements PriceDataSource {
    * token price). Returns a map keyed by the original input token values; unpriceable tokens are
    * absent from the map.
    */
-  async getUsdPrices(
-    tokens: (Address | "NATIVE")[],
-  ): Promise<Map<Address | "NATIVE", UsdPrice>> {
+  async getUsdPrices(tokens: (Address | "NATIVE")[]): Promise<Map<Address | "NATIVE", UsdPrice>> {
     if (tokens.length === 0) return new Map();
 
     const { hasNative, contracts } = splitTokens(tokens);

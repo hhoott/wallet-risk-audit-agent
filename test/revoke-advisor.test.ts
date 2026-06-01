@@ -340,7 +340,7 @@ describe("Revoke_Advisor — read-only without sensitive fields", () => {
 // ── Unit tests ──────────────────────────────────────────────────────
 
 describe("Revoke_Advisor — unit tests", () => {
-  it("returns \"No approvals need revoking\" with no links when there are no risky authorizations (requirement 11.6)", () => {
+  it('returns "No approvals need revoking" with no links when there are no risky authorizations (requirement 11.6)', () => {
     // A finite (non-unlimited) ERC-20 approval whose spender has no contract-risk entry.
     const approvals: ApprovalRecord[] = [
       {
@@ -446,11 +446,7 @@ describe("Revoke_Advisor — unit tests", () => {
       },
       allowance,
     });
-    const sorted = sortAdvice([
-      mk("HIGH", "5", 1),
-      mk("CRITICAL", "1", 2),
-      mk("HIGH", "10", 3),
-    ]);
+    const sorted = sortAdvice([mk("HIGH", "5", 1), mk("CRITICAL", "1", 2), mk("HIGH", "10", 3)]);
     expect(sorted.map((a) => a.riskLevel)).toEqual(["CRITICAL", "HIGH", "HIGH"]);
     // Within HIGH: allowance 10 before 5.
     expect(sorted[1]!.allowance).toBe("10");
