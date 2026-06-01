@@ -99,6 +99,16 @@ function bookableTiers(config: PortalConfig): string[] {
   return Object.keys(config.serviceIds);
 }
 
+/** Local URLs surfaced at startup so users know where to open the browser. */
+function localPortalUrls(config: PortalConfig): { frontend: string; api: string; health: string } {
+  const base = `http://localhost:${config.port}`;
+  return {
+    frontend: base,
+    api: `${base}/api`,
+    health: `${base}/api/health`,
+  };
+}
+
 /** Build and start the portal, connecting the CAP WebSocket and listening for HTTP requests. */
 export async function main(): Promise<void> {
   try {
@@ -124,7 +134,10 @@ export async function main(): Promise<void> {
     });
 
     const tiers = bookableTiers(config);
-    console.info(`[portal] Listening on http://localhost:${config.port}`);
+    const urls = localPortalUrls(config);
+    console.info(`[portal] Frontend URL: ${urls.frontend}`);
+    console.info(`[portal] API base URL: ${urls.api}`);
+    console.info(`[portal] Health check: ${urls.health}`);
     console.info(`[portal] Payment mode: ${config.paymentMode.toUpperCase()}`);
     console.info(
       `[portal] Bookable tiers: ${tiers.length > 0 ? tiers.join(", ") : "(none configured)"}`,
