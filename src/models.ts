@@ -235,10 +235,10 @@ export interface RelatedAddressAnalysis {
 
 export type RevokeCategory = "UNLIMITED_APPROVAL" | "SUSPICIOUS_CONTRACT" | "HIGH_RISK_CONTRACT";
 
-/** Revocation link, pointing to the audited chain (Ethereum); contains no key/signature (requirements 11.2 / 13.3). */
+/** Revocation link, pointing to the audited chain; contains no key/signature (requirements 11.2 / 13.3). */
 export interface RevokeLink {
-  /** Audited-chain parameter, independent of the settlement chain. */
-  chain: "ethereum-mainnet";
+  /** Audited-chain slug, independent of the settlement chain (e.g. "ethereum", "base"). */
+  chain: string;
   tokenContract: Address;
   spenderOrOperator: Address;
   approvalKind: ApprovalKind;
@@ -306,8 +306,10 @@ export interface AuditReportStructured {
   /** Structure version identifier (requirement 14.7). */
   schemaVersion: string;
   walletAddress: Address;
-  /** Audited chain name (requirements 14.5/17). */
-  auditedChain: "Ethereum Mainnet";
+  /** Audited chain display name (e.g. "Ethereum Mainnet", "Base"). */
+  auditedChain: string;
+  /** Audited chain stable slug (e.g. "ethereum", "base"); machine-readable. */
+  auditedChainKey?: string;
   /** Report generation time, UTC (requirement 14.5). */
   generatedAt: string;
   tier: Tier;

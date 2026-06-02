@@ -20,10 +20,12 @@ import type { Server } from "node:http";
 import { loadPortalConfig, MissingPortalConfigError, type PortalConfig } from "./config.js";
 import { createPortalServer, type CheckoutClientFactory } from "./server.js";
 import { OrchestratorLocalAuditor, type LocalAuditor } from "./local-auditor.js";
+import { MultiChainAuditor } from "./multichain-auditor.js";
 import { loadConfig } from "../config.js";
 import { buildProvidersFromConfig } from "../datasource/providers/index.js";
 import { RetryPolicy } from "../datasource/retry.js";
 import { AuditOrchestrator } from "../orchestrator.js";
+import { getChain, type ChainKey } from "../chains.js";
 import { loadLlmConfig } from "../llm/config.js";
 import { createChatModel, AuditSkillSet } from "../llm/skills.js";
 
@@ -48,8 +50,10 @@ async function buildSkills(): Promise<AuditSkillSet | undefined> {
 }
 
 /**
- * Build an audit engine from the real read-only data providers (Ethereum Mainnet). Used when the
- * portal runs standalone (no auditor injected). Read-only. Adds AI insight when an LLM is configured.
+ * Build a multi-chain audit engine from the real read-only data providers. Used when the portal
+ * runs standalone (no auditor injected). Each supported chain gets its own engine, built lazily on
+ * first use (providers target that chain's Etherscan chainid + RPC + CoinGecko platform). Read-only.
+ * Adds AI insight when an LLM is configured.
  */
 async function buildAuditor(): Promise<LocalAuditor> {
   // The Provider-side RuntimeConfig only needs CROO_SDK_KEY to load; the data providers ignore the
@@ -65,16 +69,23 @@ async function buildAuditor(): Promise<LocalAuditor> {
       };
     }
   })();
-  const retry = new RetryPolicy();
-  const providers = buildProvidersFromConfig(runtimeConfig, { retry });
-  const orchestrator = new AuditOrchestrator({
-    chain: providers.chain,
-    price: providers.price,
-    rules: providers.rules,
-    retry,
-  });
+  // The AI skill set is chain-agnostic and shared across chains; the chain context is injected into
+  // each prompt at call time (so the model knows which chain the facts belong to).
   const skills = await buildSkills();
-  return new OrchestratorLocalAuditor(orchestrator, skills);
+
+  return new MultiChainAuditor((chainKey: ChainKey) => {
+    const chain = getChain(chainKey);
+    const retry = new RetryPolicy();
+    const providers = buildProvidersFromConfig(runtimeConfig, { retry, chain });
+    const orchestrator = new AuditOrchestrator({
+      chain: providers.chain,
+      price: providers.price,
+      rules: providers.rules,
+      retry,
+      auditedChain: chain,
+    });
+    return new OrchestratorLocalAuditor(orchestrator, skills, chain);
+  });
 }
 
 /** Build (but do not start) the portal HTTP server. */

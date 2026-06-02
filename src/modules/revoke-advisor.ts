@@ -29,10 +29,11 @@ import type {
 } from "../models.js";
 import { RISK_LEVEL_ORDER } from "../models.js";
 import { AUDITED_CHAIN_ID } from "../config.js";
+import { DEFAULT_CHAIN, type ChainDescriptor } from "../chains.js";
 
 // ── Constants ──────────────────────────────────────────────────────
 
-/** Audited-chain parameter carried by every Revoke_Link (requirement 11.2). */
+/** Default audited-chain parameter carried by a Revoke_Link when no chain is specified (Ethereum). */
 export const REVOKE_CHAIN_PARAM = "ethereum-mainnet" as const;
 
 /** Message returned when there is nothing to revoke (requirement 11.6). */
@@ -93,22 +94,30 @@ export function isOperatorKind(kind: ApprovalKind): boolean {
  * Permit2 allowances and ERC-721 / ERC-1155 operator approvals — for operator approvals the
  * address is the operator and `token` is the NFT contract (no allowance amount is encoded).
  */
-export function buildRevokeUrl(spenderOrOperator: Address, tokenContract: Address): string {
-  return `https://revoke.cash/address/${spenderOrOperator}?chainId=${AUDITED_CHAIN_ID}&token=${tokenContract}`;
+export function buildRevokeUrl(
+  spenderOrOperator: Address,
+  tokenContract: Address,
+  chainId: number = AUDITED_CHAIN_ID,
+): string {
+  return `https://revoke.cash/address/${spenderOrOperator}?chainId=${chainId}&token=${tokenContract}`;
 }
 
 /**
  * Build the Revoke_Link for an approval record (requirement 11.2 / 11.5).
  * The link targets the spender/operator and the token/NFT contract on the audited chain; it
- * contains no key / signature / transaction fields — only addresses and a clickable URL.
+ * contains no key / signature / transaction fields — only addresses and a clickable URL. The
+ * `chain` defaults to Ethereum Mainnet so existing single-chain callers are unaffected.
  */
-export function buildRevokeLink(record: ApprovalRecord): RevokeLink {
+export function buildRevokeLink(
+  record: ApprovalRecord,
+  chain: ChainDescriptor = DEFAULT_CHAIN,
+): RevokeLink {
   return {
-    chain: REVOKE_CHAIN_PARAM,
+    chain: chain.revokeChainSlug,
     tokenContract: record.tokenContract,
     spenderOrOperator: record.spender,
     approvalKind: record.kind,
-    url: buildRevokeUrl(record.spender, record.tokenContract),
+    url: buildRevokeUrl(record.spender, record.tokenContract, chain.chainId),
   };
 }
 
@@ -214,6 +223,7 @@ export function sortAdvice(advice: readonly RevokeAdvice[]): RevokeAdvice[] {
 export function generateRevokeAdvice(
   approvals: readonly ApprovalRecord[],
   contractRisks: readonly ContractRisk[],
+  chain: ChainDescriptor = DEFAULT_CHAIN,
 ): RevokeAdvice[] {
   const riskByContract = indexContractRisks(contractRisks);
   const advice: RevokeAdvice[] = [];
@@ -224,7 +234,7 @@ export function generateRevokeAdvice(
       category: cat.category,
       riskLevel: cat.riskLevel,
       reason: buildReason(cat.category, cat.riskLevel),
-      revokeLink: buildRevokeLink(record),
+      revokeLink: buildRevokeLink(record, chain),
       allowance: sortAllowance(record),
     });
   }

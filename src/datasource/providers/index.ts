@@ -24,6 +24,7 @@ import type { RuntimeConfig } from "../../config.js";
 import type { ChainDataSource, PriceDataSource, RiskRuleSource } from "../types.js";
 import type { RetryPolicy } from "../retry.js";
 import type { RiskListEntry } from "./risk-rules.js";
+import { DEFAULT_CHAIN, resolveRpcUrl, type ChainDescriptor } from "../../chains.js";
 
 import { EtherscanChainDataSource } from "./chain-etherscan.js";
 import { CoinGeckoPriceDataSource } from "./price-coingecko.js";
@@ -99,24 +100,39 @@ export interface BuildProvidersOptions {
   now?: () => Date;
   /** Environment used by {@link loadProviderApiKeys} when extraKeys is omitted. */
   env?: NodeJS.ProcessEnv;
+  /** The audited chain to build providers for. Defaults to Ethereum Mainnet. */
+  chain?: ChainDescriptor;
 }
 
 /**
- * Build the three real providers, wiring API keys from env-backed config.
+ * Build the three real providers for one audited chain, wiring API keys from env-backed config.
  *
  * The {@link RuntimeConfig} carries the CAP/settlement-side configuration; the audited-chain data
  * and price API keys are injected separately (via `extraKeys` or the environment) since they are
- * not part of the CAP config surface. MANUAL(H7-12): keys are injected, never hard-coded.
+ * not part of the CAP config surface. The chain descriptor selects the Etherscan chainid, the viem
+ * RPC + network, and the CoinGecko platform / native coin ids. MANUAL(H7-12): keys are injected,
+ * never hard-coded.
  */
 export function buildProvidersFromConfig(
   _config: RuntimeConfig,
   options: BuildProvidersOptions = {},
 ): DataProviders {
   const keys = options.extraKeys ?? loadProviderApiKeys(options.env);
+  const chain = options.chain ?? DEFAULT_CHAIN;
+  const env = options.env ?? process.env;
 
-  const chain = new EtherscanChainDataSource({
+  // Per-chain RPC: an explicit per-chain env var wins, else the shared key override, else the
+  // chain's public default. A globally-injected ethRpcUrl (extraKeys) still applies to Ethereum.
+  const rpcUrl =
+    chain.key === "ethereum" && keys.ethRpcUrl !== undefined && keys.ethRpcUrl !== ""
+      ? keys.ethRpcUrl
+      : resolveRpcUrl(chain, env);
+
+  const chainSource = new EtherscanChainDataSource({
     etherscanApiKey: keys.etherscanApiKey ?? "",
-    rpcUrl: keys.ethRpcUrl,
+    rpcUrl,
+    chainId: chain.chainId,
+    viemChain: chain.viemChain,
     retry: options.retry,
     now: options.now,
   });
@@ -124,11 +140,13 @@ export function buildProvidersFromConfig(
   const price = new CoinGeckoPriceDataSource({
     apiKey: keys.coingeckoApiKey,
     pro: keys.coingeckoPro ?? false,
+    nativeCoinId: chain.coingeckoNativeId,
+    platformId: chain.coingeckoPlatformId,
     retry: options.retry,
     now: options.now,
   });
 
   const rules = new StaticRiskRuleSource({ entries: keys.riskList });
 
-  return { chain, price, rules };
+  return { chain: chainSource, price, rules };
 }

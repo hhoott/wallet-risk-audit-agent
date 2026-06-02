@@ -31,6 +31,7 @@ import type { Tier } from "../config.js";
 import { TIER_PRICE_USDC } from "../config.js";
 import { SERVICE_CATALOG } from "../services.js";
 import { validateAddresses } from "../modules/address-validator.js";
+import { CHAIN_ORDER, SUPPORTED_CHAINS, resolveChainKey, type ChainKey } from "../chains.js";
 import type { PortalConfig } from "./config.js";
 import type { LocalAuditor } from "./local-auditor.js";
 import {
@@ -168,6 +169,14 @@ function buildTiersPayload(config: PortalConfig): unknown {
     tiers,
     auditedChain: "Ethereum Mainnet",
     settlementChain: "Base (USDC)",
+    // The audited chains the user can pick from (read-only, multi-chain via Etherscan V2).
+    chains: CHAIN_ORDER.map((key) => ({
+      key,
+      name: SUPPORTED_CHAINS[key].name,
+      chainId: SUPPORTED_CHAINS[key].chainId,
+      nativeSymbol: SUPPORTED_CHAINS[key].nativeSymbol,
+    })),
+    defaultChain: "ethereum",
     paymentMode: config.paymentMode,
     // Whether the web UI may show the "pay with a CROO agent key" tab (demo capability).
     allowCrooKey: config.allowCrooKey,
@@ -189,6 +198,7 @@ function parseOrderRequest(body: unknown):
   | {
       tier: Tier;
       addresses: string[];
+      chainKey: ChainKey;
       crooKey?: string;
       payTxHash?: string;
       method: "cap" | "metamask" | "none";
@@ -198,20 +208,30 @@ function parseOrderRequest(body: unknown):
   if (typeof body !== "object" || body === null) {
     return { error: "Request body must be a JSON object." };
   }
-  const { tier, walletAddress, walletAddresses, crooKey, payTxHash, method, stream } = body as {
-    tier?: unknown;
-    walletAddress?: unknown;
-    walletAddresses?: unknown;
-    crooKey?: unknown;
-    payTxHash?: unknown;
-    method?: unknown;
-    stream?: unknown;
-  };
+  const { tier, walletAddress, walletAddresses, chain, crooKey, payTxHash, method, stream } =
+    body as {
+      tier?: unknown;
+      walletAddress?: unknown;
+      walletAddresses?: unknown;
+      chain?: unknown;
+      crooKey?: unknown;
+      payTxHash?: unknown;
+      method?: unknown;
+      stream?: unknown;
+    };
 
   if (typeof tier !== "string" || !TIER_ORDER.includes(tier as Tier)) {
     return { error: "Field 'tier' must be one of QUICK, FULL, MULTI." };
   }
   const typedTier = tier as Tier;
+
+  // Resolve the audited chain (default ethereum). Reject an explicitly unsupported chain.
+  const chainKey = resolveChainKey(typeof chain === "string" ? chain : undefined);
+  if (chainKey === undefined) {
+    return {
+      error: `Unsupported chain '${String(chain)}'. Supported: ${CHAIN_ORDER.join(", ")}.`,
+    };
+  }
 
   // Accept either a single address or a list; MULTI expects a list but a single is allowed too.
   let rawAddresses: string[];
@@ -247,6 +267,7 @@ function parseOrderRequest(body: unknown):
   return {
     tier: typedTier,
     addresses,
+    chainKey,
     crooKey: key,
     payTxHash: tx,
     method: resolvedMethod,
@@ -432,6 +453,14 @@ async function handleVet(req: IncomingMessage, res: ServerResponse, ctx: ServerC
     typeof (body as { address?: unknown })?.address === "string"
       ? (body as { address: string }).address.trim()
       : "";
+  const chainRaw = (body as { chain?: unknown })?.chain;
+  const chainKey = resolveChainKey(typeof chainRaw === "string" ? chainRaw : undefined);
+  if (chainKey === undefined) {
+    sendJson(res, 400, {
+      error: `Unsupported chain '${String(chainRaw)}'. Supported: ${CHAIN_ORDER.join(", ")}.`,
+    });
+    return;
+  }
   const validation = validateAddresses([address]);
   if (validation.rejected || validation.pendingAddresses.length === 0) {
     const firstError = validation.results.find((r) => !r.valid)?.error;
@@ -439,12 +468,12 @@ async function handleVet(req: IncomingMessage, res: ServerResponse, ctx: ServerC
     return;
   }
   try {
-    const result = await ctx.auditor.vetAddress(validation.pendingAddresses[0]!);
+    const result = await ctx.auditor.vetAddress(validation.pendingAddresses[0]!, chainKey);
     if (!result.ok) {
       sendJson(res, 502, { error: result.reason ?? "Address vetting failed." });
       return;
     }
-    sendJson(res, 200, { ok: true, intel: result.result, ai: result.ai });
+    sendJson(res, 200, { ok: true, chain: chainKey, intel: result.result, ai: result.ai });
   } catch (err) {
     ctx.logger.error(`Vet failed: ${err instanceof Error ? err.message : String(err)}`);
     sendJson(res, 500, { error: "Address vetting could not be completed." });
@@ -461,6 +490,7 @@ interface OrderOutcome {
 interface OrderParams {
   tier: Tier;
   addresses: string[];
+  chainKey: ChainKey;
   crooKey?: string;
   payTxHash?: string;
   method: "cap" | "metamask" | "none";
@@ -543,12 +573,13 @@ async function runOrder(
       message: "Payment verified; running the audit…",
       txHash: params.payTxHash,
     });
-    const local = await ctx.auditor.audit(params.tier, params.addresses);
+    const local = await ctx.auditor.audit(params.tier, params.addresses, params.chainKey);
     return {
       status: 200,
       body: {
         orderId: local.orderId,
         tier: params.tier,
+        chain: params.chainKey,
         mode: config.paymentMode,
         paid: true,
         paymentMethod: "metamask",
@@ -609,6 +640,7 @@ async function runOrder(
         body: {
           orderId: result.orderId,
           tier: params.tier,
+          chain: params.chainKey,
           mode: config.paymentMode,
           paid: true,
           payTxHash: result.payTxHash,
@@ -661,12 +693,13 @@ async function localOutcome(
   note: string,
 ): Promise<OrderOutcome> {
   try {
-    const local = await ctx.auditor.audit(params.tier, params.addresses);
+    const local = await ctx.auditor.audit(params.tier, params.addresses, params.chainKey);
     return {
       status: 200,
       body: {
         orderId: local.orderId,
         tier: params.tier,
+        chain: params.chainKey,
         mode: ctx.config.paymentMode,
         paid: false,
         paymentBypassed: true,

@@ -93,6 +93,21 @@ function verdictLabel(v) {
   return map[v] ?? v;
 }
 
+/** Block-explorer transaction base per chain key (matches src/chains.ts). */
+const EXPLORER_TX = {
+  ethereum: "https://etherscan.io/tx",
+  base: "https://basescan.org/tx",
+  arbitrum: "https://arbiscan.io/tx",
+  optimism: "https://optimistic.etherscan.io/tx",
+  polygon: "https://polygonscan.com/tx",
+};
+
+/** Resolve the explorer tx base for the audited chain of a result payload. */
+function explorerTxBase(data) {
+  const key = data?.chain ?? data?.structured?.auditedChainKey ?? "ethereum";
+  return EXPLORER_TX[key] ?? EXPLORER_TX.ethereum;
+}
+
 /** A single stat cell. */
 function stat(num, label) {
   const el = h("div", { class: "stat" });
@@ -193,7 +208,7 @@ function flagChip(flag) {
  * Render a wallet's annotated transaction records. Each row shows direction, counterparty (with its
  * situation flags), value, and success — i.e. "who was on the other side and what happened".
  */
-function renderActivityCard(activity) {
+function renderActivityCard(activity, explorerBase = "https://etherscan.io/tx") {
   const card = h("div", { class: "report__card" });
   const count = activity.analyzedCount ?? (activity.records ?? []).length;
   card.appendChild(
@@ -247,7 +262,7 @@ function renderActivityCard(activity) {
         class: "txrow__link",
         text: "View ›",
         attrs: {
-          href: `https://etherscan.io/tx/${rec.txHash}`,
+          href: `${explorerBase}/${rec.txHash}`,
           target: "_blank",
           rel: "noopener noreferrer",
         },
@@ -532,7 +547,7 @@ function downloadJson(structured, orderId) {
  *
  * `walletReportFor(address)` returns the matching structured wallet report (for EOAs), or null.
  */
-function renderAddressSection(intel, walletReportFor) {
+function renderAddressSection(intel, walletReportFor, explorerBase) {
   const section = h("div", { class: "addrsection" });
   section.appendChild(renderTypeHero(intel));
 
@@ -542,7 +557,7 @@ function renderAddressSection(intel, walletReportFor) {
     // A personal wallet: lead with the wallet's own risk report, then the annotated activity.
     const report = walletReportFor ? walletReportFor(intel.address) : null;
     if (report) section.appendChild(renderSingle(report));
-    if (intel.activity) section.appendChild(renderActivityCard(intel.activity));
+    if (intel.activity) section.appendChild(renderActivityCard(intel.activity, explorerBase));
   } else if (type === "ERC20") {
     if (intel.token) section.appendChild(renderTokenCard(intel.token));
   }
@@ -585,9 +600,10 @@ export function renderReportInto(container, data) {
 
   if (intelList.length > 0) {
     // Address-type-first layout.
+    const explorerBase = explorerTxBase(data);
     if (isMulti) container.appendChild(renderMultiSummary(structured, data));
     for (const intel of intelList) {
-      container.appendChild(renderAddressSection(intel, walletReportFor));
+      container.appendChild(renderAddressSection(intel, walletReportFor, explorerBase));
     }
     // Any wallet reports not matched to an intel entry (defensive) still get rendered.
     const shown = new Set(intelList.map((i) => String(i.address ?? "").toLowerCase()));

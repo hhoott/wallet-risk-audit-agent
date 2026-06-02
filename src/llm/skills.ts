@@ -34,6 +34,16 @@ const SYSTEM_PROMPT =
   "practical. Never ask for private keys or seed phrases; revocation is done by the user in their " +
   "own wallet. If the data is insufficient for a claim, say so.";
 
+/**
+ * A one-line chain context appended to a prompt so the model interprets the facts on the right
+ * chain (e.g. token standards, native token, explorer). Empty when no chain label is given.
+ */
+function chainContext(chainLabel?: string): string {
+  return chainLabel !== undefined && chainLabel.trim() !== ""
+    ? `\n\nAudited chain: ${chainLabel}. Interpret all addresses, tokens, and the native asset on THIS chain.`
+    : "";
+}
+
 /** Trim a report to the fields the LLM needs, keeping prompts small and focused. */
 function compactReport(report: ReportInput): string {
   return JSON.stringify(report, (key, value) => {
@@ -49,10 +59,15 @@ function compactReport(report: ReportInput): string {
  * Explain, in plain language, why the report's findings matter and how severe they are. Returns
  * Markdown suitable for direct display.
  */
-export async function explainRisks(model: ChatModel, report: ReportInput): Promise<string> {
+export async function explainRisks(
+  model: ChatModel,
+  report: ReportInput,
+  chainLabel?: string,
+): Promise<string> {
   const user =
     "Here is the audit report JSON:\n\n" +
     compactReport(report) +
+    chainContext(chainLabel) +
     "\n\nWrite a short plain-language risk explanation for the wallet owner. Lead with the overall " +
     "health and risk level, then explain the 3-5 most important findings (unlimited approvals, " +
     "high-risk/suspicious contracts, risky transactions) and WHY each is dangerous. Use Markdown " +
@@ -64,10 +79,15 @@ export async function explainRisks(model: ChatModel, report: ReportInput): Promi
  * Produce a prioritized, actionable remediation checklist tailored to the wallet (what to revoke
  * first, what to monitor, what is safe). Returns Markdown.
  */
-export async function remediationPlan(model: ChatModel, report: ReportInput): Promise<string> {
+export async function remediationPlan(
+  model: ChatModel,
+  report: ReportInput,
+  chainLabel?: string,
+): Promise<string> {
   const user =
     "Here is the audit report JSON:\n\n" +
     compactReport(report) +
+    chainContext(chainLabel) +
     "\n\nProduce a prioritized action plan for the wallet owner as a numbered Markdown checklist, " +
     "most urgent first. For each item: the action, the exact token/contract address it concerns " +
     "(from the JSON), and a one-line reason. Prefer revoking unlimited and high-risk approvals " +
@@ -81,10 +101,12 @@ export async function answerQuestion(
   model: ChatModel,
   report: ReportInput,
   question: string,
+  chainLabel?: string,
 ): Promise<string> {
   const user =
     "Here is the audit report JSON:\n\n" +
     compactReport(report) +
+    chainContext(chainLabel) +
     `\n\nThe wallet owner asks: "${question}"\n\n` +
     "Answer using only the report data. If the report does not contain enough information to " +
     "answer, say what additional check would be needed. Keep it concise and use Markdown.";
@@ -95,10 +117,15 @@ export async function answerQuestion(
  * Explain an address-vetting / counterparty verdict in plain language. `intel` is the structured
  * AddressIntelResult JSON. Returns Markdown.
  */
-export async function explainAddress(model: ChatModel, intel: unknown): Promise<string> {
+export async function explainAddress(
+  model: ChatModel,
+  intel: unknown,
+  chainLabel?: string,
+): Promise<string> {
   const user =
     "Here is a structured address-vetting result JSON:\n\n" +
     JSON.stringify(intel) +
+    chainContext(chainLabel) +
     "\n\nIn plain language, tell the user whether it is safe to send funds to or interact with this " +
     "address, based ONLY on this data. Lead with the verdict (official / likely safe / caution / " +
     "dangerous), then the key reasons. If it is an EOA or unverified contract, note the caveat. " +
@@ -116,6 +143,7 @@ export async function analyzeByType(
   model: ChatModel,
   addressType: string,
   facts: unknown,
+  chainLabel?: string,
 ): Promise<string> {
   const guidance: Record<string, string> = {
     ERC20:
@@ -138,7 +166,9 @@ export async function analyzeByType(
   };
   const hint = guidance[addressType] ?? "Assess the address's risk from the provided facts.";
   const user =
-    `Detected address type: ${addressType}.\n${hint}\n\nFacts JSON:\n\n` +
+    `Detected address type: ${addressType}.\n${hint}` +
+    chainContext(chainLabel) +
+    "\n\nFacts JSON:\n\n" +
     JSON.stringify(facts) +
     "\n\nWrite a concise Markdown assessment grounded ONLY in these facts. Lead with a one-line " +
     "verdict, then the key reasons, then a short 'what to do' note. Do not invent data.";
@@ -154,24 +184,24 @@ export type SkillName = "explain" | "remediation" | "qa";
 export class AuditSkillSet {
   constructor(private readonly model: ChatModel) {}
 
-  explainRisks(report: ReportInput): Promise<string> {
-    return explainRisks(this.model, report);
+  explainRisks(report: ReportInput, chainLabel?: string): Promise<string> {
+    return explainRisks(this.model, report, chainLabel);
   }
 
-  remediationPlan(report: ReportInput): Promise<string> {
-    return remediationPlan(this.model, report);
+  remediationPlan(report: ReportInput, chainLabel?: string): Promise<string> {
+    return remediationPlan(this.model, report, chainLabel);
   }
 
-  answerQuestion(report: ReportInput, question: string): Promise<string> {
-    return answerQuestion(this.model, report, question);
+  answerQuestion(report: ReportInput, question: string, chainLabel?: string): Promise<string> {
+    return answerQuestion(this.model, report, question, chainLabel);
   }
 
-  explainAddress(intel: unknown): Promise<string> {
-    return explainAddress(this.model, intel);
+  explainAddress(intel: unknown, chainLabel?: string): Promise<string> {
+    return explainAddress(this.model, intel, chainLabel);
   }
 
-  analyzeByType(addressType: string, facts: unknown): Promise<string> {
-    return analyzeByType(this.model, addressType, facts);
+  analyzeByType(addressType: string, facts: unknown, chainLabel?: string): Promise<string> {
+    return analyzeByType(this.model, addressType, facts, chainLabel);
   }
 }
 

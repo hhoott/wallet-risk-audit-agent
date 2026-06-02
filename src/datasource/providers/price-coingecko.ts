@@ -94,6 +94,10 @@ export interface CoinGeckoPriceOptions {
   pro?: boolean;
   /** Override the base URL (testing / self-hosted proxy). Takes precedence over the pro default. */
   baseUrl?: string;
+  /** CoinGecko coin id for the native token (defaults to "ethereum"). */
+  nativeCoinId?: string;
+  /** CoinGecko asset-platform id for ERC-20 token prices (defaults to "ethereum"). */
+  platformId?: string;
   /** Optional retry/timeout policy; when provided, remote calls are wrapped with it. */
   retry?: RetryPolicy;
   /** Injected clock for the pricedAt-style needs of callers; not used directly here. */
@@ -109,6 +113,8 @@ export class CoinGeckoPriceDataSource implements PriceDataSource {
   private readonly apiKey: string | undefined;
   private readonly pro: boolean;
   private readonly baseUrl: string;
+  private readonly nativeCoinId: string;
+  private readonly platformId: string;
   private readonly retry: RetryPolicy | undefined;
   private readonly fetchImpl: typeof fetch;
 
@@ -117,6 +123,8 @@ export class CoinGeckoPriceDataSource implements PriceDataSource {
     this.pro = options.pro ?? false;
     this.baseUrl =
       options.baseUrl ?? (this.pro ? PRO_COINGECKO_BASE_URL : DEFAULT_COINGECKO_BASE_URL);
+    this.nativeCoinId = options.nativeCoinId ?? ETHEREUM_COIN_ID;
+    this.platformId = options.platformId ?? ETHEREUM_PLATFORM_ID;
     this.retry = options.retry;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
@@ -137,10 +145,10 @@ export class CoinGeckoPriceDataSource implements PriceDataSource {
     return buildPriceMap(tokens, nativeUsd, tokenPrices);
   }
 
-  /** Fetch the native token (ETH) USD price via /simple/price. */
+  /** Fetch the native token USD price via /simple/price. */
   private async fetchNativeUsd(): Promise<number | undefined> {
     const url = this.buildUrl("/simple/price", {
-      ids: ETHEREUM_COIN_ID,
+      ids: this.nativeCoinId,
       vs_currencies: "usd",
     });
     try {
@@ -148,15 +156,15 @@ export class CoinGeckoPriceDataSource implements PriceDataSource {
         () => this.getJson<SimplePriceResponse>(url),
         "coingecko.simple/price",
       );
-      return json[ETHEREUM_COIN_ID]?.usd;
+      return json[this.nativeCoinId]?.usd;
     } catch {
       return undefined;
     }
   }
 
-  /** Fetch ERC-20 USD prices via /simple/token_price/ethereum. */
+  /** Fetch ERC-20 USD prices via /simple/token_price/{platform}. */
   private async fetchTokenPrices(contracts: readonly Address[]): Promise<TokenPriceResponse> {
-    const url = this.buildUrl(`/simple/token_price/${ETHEREUM_PLATFORM_ID}`, {
+    const url = this.buildUrl(`/simple/token_price/${this.platformId}`, {
       contract_addresses: contracts.join(","),
       vs_currencies: "usd",
     });

@@ -59,6 +59,7 @@ import { computeHealthScore } from "./modules/health-score-engine.js";
 import { AddressIntel, type AddressIntelOutcome } from "./modules/address-intel.js";
 import { AddressInspector, type AddressInspection } from "./modules/address-inspector.js";
 import { WalletActivityAnalyzer } from "./modules/wallet-activity.js";
+import { DEFAULT_CHAIN, type ChainDescriptor } from "./chains.js";
 import {
   generateReport,
   generateMultiWalletReport,
@@ -137,6 +138,11 @@ export interface AuditOrchestratorDeps {
   retry?: RetryPolicy;
   /** Injected "current time" for determinism; defaults to () => new Date(). */
   now?: () => Date;
+  /**
+   * The audited chain descriptor (for stamping the report's chain name + revoke link chainId).
+   * Defaults to Ethereum Mainnet. The data sources in `chain`/`price` must already target this chain.
+   */
+  auditedChain?: ChainDescriptor;
 }
 
 // Internal sub-results for the data-fetching modules (ok flag + the offending source on failure).
@@ -224,6 +230,7 @@ export class AuditOrchestrator {
   private readonly price: PriceDataSource;
   private readonly retry: RetryPolicy | undefined;
   private readonly now: () => Date;
+  private readonly auditedChain: ChainDescriptor;
 
   private readonly scanner: ApprovalScanner;
   private readonly classifier: RiskClassifier;
@@ -237,6 +244,7 @@ export class AuditOrchestrator {
     this.price = deps.price;
     this.retry = deps.retry;
     this.now = deps.now ?? ((): Date => new Date());
+    this.auditedChain = deps.auditedChain ?? DEFAULT_CHAIN;
 
     this.scanner = new ApprovalScanner(deps.chain, deps.retry);
     this.classifier = new RiskClassifier({ chain: deps.chain, rules: deps.rules, now: this.now });
@@ -395,7 +403,7 @@ export class AuditOrchestrator {
     const healthScore = computeHealthScore(riskItems, { scoredOnIncompleteData });
 
     // Revoke_Advisor is pure (links only, no data source); the report trims it per tier.
-    const revokeAdvice = generateRevokeAdvice(approvals, contractRisks);
+    const revokeAdvice = generateRevokeAdvice(approvals, contractRisks, this.auditedChain);
 
     const inputs: AuditInputs = {
       walletAddress: address,
@@ -408,6 +416,7 @@ export class AuditOrchestrator {
       revokeAdvice,
       moduleStatuses: statuses,
       generatedAt,
+      chain: this.auditedChain,
     };
     const report = generateReport(inputs);
 

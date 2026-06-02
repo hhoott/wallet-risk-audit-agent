@@ -40,6 +40,7 @@ import {
   erc721Abi,
   parseAbi,
   type PublicClient,
+  type Chain,
 } from "viem";
 import { mainnet } from "viem/chains";
 
@@ -298,6 +299,8 @@ export interface EtherscanChainOptions {
   etherscanBaseUrl?: string;
   /** Chain id (defaults to the audited chain, Ethereum Mainnet = 1). */
   chainId?: number;
+  /** viem network object for read-only RPC calls (defaults to Ethereum mainnet). */
+  viemChain?: Chain;
   /** Optional retry/timeout policy; when provided, remote calls are wrapped with it. */
   retry?: RetryPolicy;
   /** Injected clock for deterministic window math; defaults to () => new Date(). */
@@ -346,7 +349,7 @@ export class EtherscanChainDataSource implements ChainDataSource {
     this.client =
       options.publicClient ??
       (createPublicClient({
-        chain: mainnet,
+        chain: options.viemChain ?? mainnet,
         transport: http(options.rpcUrl ?? DEFAULT_ETH_RPC_URL),
       }) as PublicClient);
   }

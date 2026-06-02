@@ -17,6 +17,7 @@ const els = {
   tiersGrid: document.getElementById("tiers-grid"),
   tiersLoading: document.getElementById("tiers-loading"),
   tierSelect: document.getElementById("tier-select"),
+  chainSelect: document.getElementById("chain-select"),
   form: document.getElementById("order-form"),
   wallet: document.getElementById("wallet-input"),
   walletLabel: document.getElementById("wallet-label"),
@@ -48,6 +49,8 @@ const els = {
 /** App state: the loaded tiers + payment config. */
 const state = {
   tiers: new Map(),
+  chains: [],
+  defaultChain: "ethereum",
   paymentMode: "free",
   metamask: { enabled: false },
   allowCrooKey: false,
@@ -97,7 +100,10 @@ async function loadTiers() {
     state.paymentMode = data.paymentMode ?? "paid";
     state.metamask = data.metamask ?? { enabled: false };
     state.allowCrooKey = data.allowCrooKey === true;
+    state.chains = Array.isArray(data.chains) ? data.chains : [];
+    state.defaultChain = data.defaultChain ?? "ethereum";
     applyPaymentMode();
+    renderChains();
     renderTiers(data.tiers ?? []);
   } catch {
     if (els.tiersLoading) els.tiersLoading.textContent = "Could not load tiers. Is the portal running?";
@@ -116,6 +122,21 @@ function applyPaymentMode() {
   } else if (banner) {
     banner.hidden = true;
   }
+}
+
+/** Populate the chain selector from /api/tiers. Falls back to Ethereum when none are advertised. */
+function renderChains() {
+  if (!els.chainSelect) return;
+  els.chainSelect.innerHTML = "";
+  const chains =
+    state.chains.length > 0
+      ? state.chains
+      : [{ key: "ethereum", name: "Ethereum Mainnet", nativeSymbol: "ETH" }];
+  for (const c of chains) {
+    const opt = h("option", { text: c.name, attrs: { value: c.key } });
+    els.chainSelect.appendChild(opt);
+  }
+  els.chainSelect.value = state.defaultChain;
 }
 
 function renderTiers(tiers) {
@@ -220,6 +241,7 @@ let pendingOrder = null;
 els.form.addEventListener("submit", (e) => {
   e.preventDefault();
   const tier = els.tierSelect.value;
+  const chain = els.chainSelect ? els.chainSelect.value : "ethereum";
   const addresses = parseWalletInput();
 
   const error = validateInput(tier, addresses);
@@ -228,7 +250,7 @@ els.form.addEventListener("submit", (e) => {
     return;
   }
 
-  pendingOrder = { tier, addresses };
+  pendingOrder = { tier, chain, addresses };
   openPayModal(tier, addresses);
 });
 
@@ -489,6 +511,7 @@ async function runOrder(order, payment) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tier: order.tier,
+        chain: order.chain,
         walletAddresses: order.addresses,
         method,
         crooKey: payment?.crooKey,

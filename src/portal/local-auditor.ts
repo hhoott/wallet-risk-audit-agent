@@ -29,6 +29,7 @@ import type {
 } from "../models.js";
 import type { AuditSkillSet } from "../llm/skills.js";
 import type { TokenContractInfo } from "../datasource/types.js";
+import { DEFAULT_CHAIN, type ChainDescriptor } from "../chains.js";
 
 /** One audited address's type-aware inspection (deterministic facts + optional AI assessment). */
 export interface AddressIntelEntry {
@@ -86,9 +87,10 @@ export interface AuditEngineResult {
 
 /** Runs the read-only wallet audit in-process and returns a report. */
 export interface LocalAuditor {
-  audit(tier: Tier, addresses: string[]): Promise<AuditEngineResult>;
+  /** Audit one or more addresses at a tier on the given chain key (defaults to "ethereum"). */
+  audit(tier: Tier, addresses: string[], chainKey?: string): Promise<AuditEngineResult>;
   /** Vet an address / assess a counterparty (extended target). Returns the structured result. */
-  vetAddress(address: string): Promise<AddressVetResult>;
+  vetAddress(address: string, chainKey?: string): Promise<AddressVetResult>;
 }
 
 /** Result of an address-vetting / counterparty check (server-facing shape). */
@@ -126,9 +128,11 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
     private readonly orchestrator: AuditRunner,
     /** Optional AI skill set; when present, FULL/MULTI reports are enriched with LLM insight. */
     private readonly skills?: AuditSkillSet,
+    /** The audited chain (injected into AI prompts so the model knows which chain it's analyzing). */
+    private readonly chain: ChainDescriptor = DEFAULT_CHAIN,
   ) {}
 
-  async audit(tier: Tier, addresses: string[]): Promise<AuditEngineResult> {
+  async audit(tier: Tier, addresses: string[], _chainKey?: string): Promise<AuditEngineResult> {
     const deliverable = await runAudit(this.orchestrator, tier, addresses);
     const decision = decideFromDelivery(deliverable.structured);
     const result: AuditEngineResult = {
@@ -155,8 +159,8 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
     if (this.skills !== undefined && AI_TIERS.has(tier)) {
       try {
         const [explanation, remediation] = await Promise.all([
-          this.skills.explainRisks(deliverable.structured),
-          this.skills.remediationPlan(deliverable.structured),
+          this.skills.explainRisks(deliverable.structured, this.chain.promptLabel),
+          this.skills.remediationPlan(deliverable.structured, this.chain.promptLabel),
         ]);
         result.ai = { explanation, remediation };
       } catch (err) {
@@ -211,7 +215,11 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
       // Type-specific AI assessment (premium tiers + LLM configured).
       if (this.skills !== undefined && AI_TIERS.has(tier)) {
         try {
-          entry.aiAssessment = await this.skills.analyzeByType(inspection.type, inspection.facts);
+          entry.aiAssessment = await this.skills.analyzeByType(
+            inspection.type,
+            inspection.facts,
+            this.chain.promptLabel,
+          );
         } catch {
           /* AI assessment is best-effort */
         }
@@ -268,7 +276,11 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
           };
           if (this.skills !== undefined) {
             try {
-              analysis.aiAssessment = await this.skills.analyzeByType(sub.type, sub.facts);
+              analysis.aiAssessment = await this.skills.analyzeByType(
+                sub.type,
+                sub.facts,
+                this.chain.promptLabel,
+              );
             } catch {
               /* AI note is best-effort */
             }
@@ -286,7 +298,7 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
    * Vet an address / assess a counterparty. Uses the orchestrator's Address_Intel when available;
    * adds a best-effort AI explanation of the verdict when an LLM is configured.
    */
-  async vetAddress(address: string): Promise<AddressVetResult> {
+  async vetAddress(address: string, _chainKey?: string): Promise<AddressVetResult> {
     if (typeof this.orchestrator.vetAddress !== "function") {
       return { ok: false, reason: "Address vetting is not supported by this audit engine." };
     }
@@ -297,7 +309,9 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
     const out: AddressVetResult = { ok: true, result: outcome.result };
     if (this.skills !== undefined) {
       try {
-        out.ai = { explanation: await this.skills.explainAddress(outcome.result) };
+        out.ai = {
+          explanation: await this.skills.explainAddress(outcome.result, this.chain.promptLabel),
+        };
       } catch (err) {
         out.ai = { error: err instanceof Error ? err.message : String(err) };
       }

@@ -16,8 +16,8 @@ This project currently exposes the same wallet-risk audit engine in three ways:
 
 ## What It Does
 
-- Validates Ethereum wallet and contract addresses.
-- Reads Ethereum mainnet data only; it never asks for private keys and never sends transactions for the audit itself.
+- Validates Ethereum-format wallet and contract addresses.
+- Reads public on-chain data across multiple EVM chains (Ethereum, Base, Arbitrum, Optimism, Polygon); it never asks for private keys and never sends transactions for the audit itself.
 - Analyzes balances, token holdings, approvals, contract interactions, high-risk counterparties, failed transactions, and recent activity.
 - Produces both a human-readable Markdown report and a structured JSON deliverable.
 - Supports three service tiers: `QUICK` (0.5 USDC), `FULL` (2 USDC), and `MULTI` (5 USDC).
@@ -119,11 +119,17 @@ curl -X POST http://127.0.0.1:8787/api/orders \
   -H 'Content-Type: application/json' \
   -d '{
     "tier": "FULL",
+    "chain": "ethereum",
     "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"]
   }'
 ```
 
 For streaming progress, include `"stream": true`; the server responds with Server-Sent Events.
+
+The optional `chain` field selects the audited chain (read-only, multi-chain via Etherscan V2).
+Accepted values: `ethereum` (default), `base`, `arbitrum`, `optimism`, `polygon` — or a chain id /
+display name (e.g. `8453`, `"Base"`). Omit it to audit Ethereum Mainnet. See
+[Multi-chain support](#multi-chain-support).
 
 Payment-related fields depend on the selected payment path:
 
@@ -145,6 +151,7 @@ On success (`200`), the JSON body has these fields:
 | `paid` | boolean | `true` when a CAP/MetaMask payment was confirmed. |
 | `paymentMethod` | `"metamask"` | Present only for the MetaMask path. |
 | `payTxHash` | string | Settlement/transfer tx hash, when a payment occurred. |
+| `chain` | string | The audited chain key (`ethereum` / `base` / `arbitrum` / `optimism` / `polygon`). |
 | `paymentBypassed` | boolean | `true` when free mode returned a report without enforcing payment. |
 | `paymentNote` | string | Why payment was bypassed (free mode only). |
 | `structured` | object | Machine-readable report. `AuditReportStructured` (single) or `MultiWalletReport` (has `reports[]` + `walletCount`). |
@@ -160,6 +167,7 @@ On success (`200`), the JSON body has these fields:
   "schemaVersion": "1.0.0",
   "walletAddress": "0x…",
   "auditedChain": "Ethereum Mainnet",
+  "auditedChainKey": "ethereum",      // ethereum | base | arbitrum | optimism | polygon
   "generatedAt": "2026-01-01T00:00:00.000Z",
   "tier": "FULL",
   "healthScore": 88,                  // 0–100
@@ -243,6 +251,35 @@ Error responses use `{ "error": string, "code"?: string }` with an appropriate s
 `400` (bad input), `402` (`PAYMENT_REQUIRED` / `PAYMENT_NOT_VERIFIED`), `403` (`CROO_KEY_DISABLED`),
 `502`/`504` (CAP checkout failure / timeout).
 
+### Multi-chain support
+
+The audit is read-only and multi-chain. The `chain` field on `POST /api/orders` (and `POST /api/vet`)
+selects which EVM chain to audit; the Web UI exposes it as a dropdown. `GET /api/tiers` lists the
+supported chains under `chains[]` with `defaultChain`.
+
+| Chain | `chain` value | Chain id |
+| --- | --- | --- |
+| Ethereum Mainnet | `ethereum` (default) | 1 |
+| Base | `base` | 8453 |
+| Arbitrum One | `arbitrum` | 42161 |
+| OP Mainnet | `optimism` | 10 |
+| Polygon PoS | `polygon` | 137 |
+
+How it works: Etherscan V2 is a single-key, multi-chain API — the same `ETHERSCAN_API_KEY` queries
+every chain by switching the `chainid` parameter. viem read-only RPC calls (address-type detection,
+balances, approvals, contract metadata) use the per-chain RPC, and CoinGecko USD valuation uses the
+chain's asset-platform automatically. Revocation links and the report's `auditedChain` are stamped
+for the selected chain, and the LLM prompts are told which chain the facts belong to.
+
+Configure a per-chain RPC with `ETH_RPC_URL` / `BASE_RPC_URL` / `ARBITRUM_RPC_URL` /
+`OPTIMISM_RPC_URL` / `POLYGON_RPC_URL` (each falls back to a public RPC if unset).
+
+> **Note on the Etherscan free plan:** transaction-history endpoints (`txlist`, internal txs, token
+> transfers) are only free on Ethereum Mainnet. Auditing transaction history on Base / Arbitrum /
+> Optimism / Polygon requires a paid Etherscan plan. RPC-based checks (address type, balances,
+> approvals, contract metadata) work on all chains on the free plan; the audit degrades gracefully
+> (empty transaction history) when the history endpoints are unavailable for a chain.
+
 The canonical TypeScript types are in [`src/models.ts`](./src/models.ts).
 
 ### Vet Address
@@ -297,8 +334,8 @@ Ethereum data sources:
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `ETHERSCAN_API_KEY` | Recommended | Etherscan transaction, token, and contract metadata. |
-| `ALCHEMY_RPC_URL` | Recommended | Ethereum mainnet read-only RPC. |
+| `ETHERSCAN_API_KEY` | Recommended | Etherscan V2 transaction, token, and contract metadata (single key, multi-chain). |
+| `ETH_RPC_URL` / `BASE_RPC_URL` / `ARBITRUM_RPC_URL` / `OPTIMISM_RPC_URL` / `POLYGON_RPC_URL` | Recommended | Per-chain read-only RPC for viem calls (each falls back to a public RPC). `ALCHEMY_RPC_URL` is a legacy alias for Ethereum. |
 | `COINGECKO_API_KEY` | No | Higher rate limits for valuation data. |
 | `COINGECKO_PRO` | No | Set to `true` when using CoinGecko Pro. |
 
@@ -364,7 +401,7 @@ Key runtime decision:
 
 ## Security Model
 
-- Audits are read-only on Ethereum mainnet.
+- Audits are read-only across the supported EVM chains.
 - The service does not require, store, or log private keys.
 - CROO SDK keys are injected through environment variables.
 - Browser-supplied CROO keys are a demo checkout capability and are off unless `PORTAL_ALLOW_CROO_KEY=true`.

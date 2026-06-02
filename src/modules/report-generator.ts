@@ -40,7 +40,7 @@ import type {
   TxFinding,
 } from "../models.js";
 import { READ_ONLY_DECLARATION, RISK_LEVEL_ORDER, SCHEMA_VERSION } from "../models.js";
-import { AUDITED_CHAIN } from "../config.js";
+import { DEFAULT_CHAIN, type ChainDescriptor } from "../chains.js";
 
 // ── Input aggregate ─────────────────────────────────────────────────────────────
 
@@ -69,6 +69,8 @@ export interface AuditInputs {
   moduleStatuses: ModuleStatus[];
   /** Report generation time as a UTC ISO-8601 string; defaults to `new Date().toISOString()`. */
   generatedAt?: string;
+  /** The audited chain. Defaults to Ethereum Mainnet (backward-compatible). */
+  chain?: ChainDescriptor;
 }
 
 // ── Risk level summary (requirement 14.7 / 5.2) ─────────────────────────────────
@@ -173,13 +175,15 @@ export function applyTierTrimming(inputs: AuditInputs): TrimmedModuleData {
  */
 export function buildStructuredReport(inputs: AuditInputs): AuditReportStructured {
   const generatedAt = inputs.generatedAt ?? new Date().toISOString();
+  const chain = inputs.chain ?? DEFAULT_CHAIN;
   const trimmed = applyTierTrimming(inputs);
   const riskLevelSummary = computeRiskLevelSummary(trimmed.contractRisks, trimmed.revokeAdvice);
 
   return {
     schemaVersion: SCHEMA_VERSION,
     walletAddress: inputs.walletAddress,
-    auditedChain: AUDITED_CHAIN,
+    auditedChain: chain.name,
+    auditedChainKey: chain.key,
     generatedAt,
     tier: inputs.tier,
     readOnlyDeclaration: READ_ONLY_DECLARATION,

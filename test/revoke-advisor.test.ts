@@ -13,6 +13,7 @@ import {
   OPERATOR_ALLOWANCE_SENTINEL,
   UNLIMITED_BASELINE_RISK_LEVEL,
 } from "../src/modules/revoke-advisor.js";
+import { getChain } from "../src/chains.js";
 import type {
   Address,
   ApprovalKind,
@@ -451,5 +452,32 @@ describe("Revoke_Advisor — unit tests", () => {
     // Within HIGH: allowance 10 before 5.
     expect(sorted[1]!.allowance).toBe("10");
     expect(sorted[2]!.allowance).toBe("5");
+  });
+
+  it("builds chain-aware revoke links for a non-Ethereum chain (Base)", () => {
+    const base = getChain("base");
+    const url = buildRevokeUrl(addrFromIndex(60), addrFromIndex(61), base.chainId);
+    expect(url).toBe(
+      `https://revoke.cash/address/${addrFromIndex(60)}?chainId=8453&token=${addrFromIndex(61)}`,
+    );
+
+    const record: ApprovalRecord = {
+      tokenContract: addrFromIndex(62),
+      spender: addrFromIndex(63),
+      spenderLabel: "Unknown",
+      kind: "ERC20",
+      allowance: "1",
+      isUnlimited: true,
+      lastUpdated: "2024-01-01T00:00:00.000Z",
+    };
+    const link = buildRevokeLink(record, base);
+    expect(link.chain).toBe("base");
+    expect(link.url).toContain("chainId=8453");
+
+    // generateRevokeAdvice threads the chain through to the link.
+    const advice = generateRevokeAdvice([record], [], base);
+    expect(advice).toHaveLength(1);
+    expect(advice[0]!.revokeLink.chain).toBe("base");
+    expect(advice[0]!.revokeLink.url).toContain("chainId=8453");
   });
 });
