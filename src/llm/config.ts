@@ -23,11 +23,15 @@ export interface LlmConfig {
   temperature: number;
   /** Hard cap on output tokens per call. */
   maxTokens: number;
+  /** Whether to log each LLM call (start / success / failure) to the console. Default true. */
+  logCalls: boolean;
 }
 
 /** Load LLM configuration from the environment. */
 export function loadLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfig {
   const apiKey = (env.LLM_API_KEY ?? "").trim();
+  // LLM call logging is ON by default; set LLM_LOG=false to silence it.
+  const logCalls = (env.LLM_LOG ?? "true").trim().toLowerCase() !== "false";
   return {
     enabled: apiKey.length > 0,
     apiKey,
@@ -35,5 +39,6 @@ export function loadLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfig {
     model: env.LLM_MODEL ?? "gpt-4o-mini",
     temperature: Number.parseFloat(env.LLM_TEMPERATURE ?? "0.2") || 0.2,
     maxTokens: Number.parseInt(env.LLM_MAX_TOKENS ?? "1200", 10) || 1200,
+    logCalls,
   };
 }

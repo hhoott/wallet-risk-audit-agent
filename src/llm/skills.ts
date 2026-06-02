@@ -20,7 +20,8 @@ import type { LlmConfig } from "./config.js";
 
 /** Minimal chat interface: take a system + user prompt, return the model's text. */
 export interface ChatModel {
-  complete(systemPrompt: string, userPrompt: string): Promise<string>;
+  /** `label` identifies the calling skill (for logging); optional so fakes stay simple. */
+  complete(systemPrompt: string, userPrompt: string, label?: string): Promise<string>;
 }
 
 /** A report (single or multi-wallet) the skills operate on. */
@@ -72,7 +73,7 @@ export async function explainRisks(
     "health and risk level, then explain the 3-5 most important findings (unlimited approvals, " +
     "high-risk/suspicious contracts, risky transactions) and WHY each is dangerous. Use Markdown " +
     "with short bullet points. Do not list findings that are not in the JSON.";
-  return model.complete(SYSTEM_PROMPT, user);
+  return model.complete(SYSTEM_PROMPT, user, "explainRisks");
 }
 
 /**
@@ -93,7 +94,7 @@ export async function remediationPlan(
     "(from the JSON), and a one-line reason. Prefer revoking unlimited and high-risk approvals " +
     "first. If a revokeAdvice entry has a URL, reference that the user can revoke via the provided " +
     "link in their own wallet. End with a brief 'what looks fine' note if applicable.";
-  return model.complete(SYSTEM_PROMPT, user);
+  return model.complete(SYSTEM_PROMPT, user, "remediationPlan");
 }
 
 /** Answer a free-form question grounded in the report. Returns Markdown. */
@@ -110,7 +111,7 @@ export async function answerQuestion(
     `\n\nThe wallet owner asks: "${question}"\n\n` +
     "Answer using only the report data. If the report does not contain enough information to " +
     "answer, say what additional check would be needed. Keep it concise and use Markdown.";
-  return model.complete(SYSTEM_PROMPT, user);
+  return model.complete(SYSTEM_PROMPT, user, "answerQuestion");
 }
 
 /**
@@ -130,7 +131,7 @@ export async function explainAddress(
     "address, based ONLY on this data. Lead with the verdict (official / likely safe / caution / " +
     "dangerous), then the key reasons. If it is an EOA or unverified contract, note the caveat. " +
     "Be concise; use Markdown. Remind them to always double-check addresses themselves.";
-  return model.complete(SYSTEM_PROMPT, user);
+  return model.complete(SYSTEM_PROMPT, user, "explainAddress");
 }
 
 /**
@@ -172,7 +173,7 @@ export async function analyzeByType(
     JSON.stringify(facts) +
     "\n\nWrite a concise Markdown assessment grounded ONLY in these facts. Lead with a one-line " +
     "verdict, then the key reasons, then a short 'what to do' note. Do not invent data.";
-  return model.complete(SYSTEM_PROMPT, user);
+  return model.complete(SYSTEM_PROMPT, user, `analyzeByType:${addressType}`);
 }
 
 // ── The AI skill set bundle ───────────────────────────────────────────────────────────────
@@ -212,6 +213,11 @@ export class AuditSkillSet {
  * endpoint (DeepSeek, OpenAI, local gateway). Returns undefined when the LLM is not configured.
  *
  * The API key + base URL + model are injected from {@link LlmConfig} (env-sourced); never hard-coded.
+ *
+ * When `config.logCalls` is true (default), each call is logged with the calling skill, model,
+ * latency, prompt/response sizes and (when the provider reports it) token usage — so you can see in
+ * the console that the LLM is actually being hit. The API key, prompts and responses are NEVER
+ * logged (only their sizes).
  */
 export async function createChatModel(config: LlmConfig): Promise<ChatModel | undefined> {
   if (!config.enabled) return undefined;
@@ -223,23 +229,59 @@ export async function createChatModel(config: LlmConfig): Promise<ChatModel | un
     maxTokens: config.maxTokens,
     configuration: { baseURL: config.baseUrl },
   });
+  const log = config.logCalls ? (m: string): void => console.info(`[llm] ${m}`) : (): void => {};
+
+  if (config.logCalls) {
+    console.info(`[llm] enabled — model=${config.model} baseUrl=${config.baseUrl}`);
+  }
+
+  let seq = 0;
   return {
-    async complete(systemPrompt: string, userPrompt: string): Promise<string> {
-      const res = await llm.invoke([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ]);
-      const content = res.content;
-      if (typeof content === "string") return content;
-      // Content can be an array of parts; join any text parts.
-      if (Array.isArray(content)) {
-        return content
-          .map((p) =>
-            typeof p === "string" ? p : "text" in p && typeof p.text === "string" ? p.text : "",
-          )
-          .join("");
+    async complete(systemPrompt: string, userPrompt: string, label = "call"): Promise<string> {
+      const id = ++seq;
+      const promptChars = systemPrompt.length + userPrompt.length;
+      const startedAt = Date.now();
+      log(`#${id} ${label} → request (model=${config.model}, prompt=${promptChars} chars)`);
+      try {
+        const res = await llm.invoke([
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ]);
+        const text = extractText(res.content);
+        const ms = Date.now() - startedAt;
+        log(`#${id} ${label} ✓ ${ms}ms, response=${text.length} chars${formatUsage(res)}`);
+        return text;
+      } catch (err) {
+        const ms = Date.now() - startedAt;
+        log(`#${id} ${label} ✕ ${ms}ms — ${err instanceof Error ? err.message : String(err)}`);
+        throw err;
       }
-      return String(content ?? "");
     },
   };
+}
+
+/** Extract plain text from a LangChain message content (string or array of parts). */
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((p) =>
+        typeof p === "string" ? p : "text" in p && typeof p.text === "string" ? p.text : "",
+      )
+      .join("");
+  }
+  return String(content ?? "");
+}
+
+/** Best-effort token-usage suffix from a LangChain response (when the provider reports it). */
+function formatUsage(res: unknown): string {
+  if (res === null || typeof res !== "object") return "";
+  const meta = (res as { usage_metadata?: Record<string, unknown> }).usage_metadata;
+  const total = meta?.total_tokens;
+  const input = meta?.input_tokens;
+  const output = meta?.output_tokens;
+  if (typeof total === "number") {
+    return `, tokens=${total} (in ${Number(input ?? 0)} / out ${Number(output ?? 0)})`;
+  }
+  return "";
 }

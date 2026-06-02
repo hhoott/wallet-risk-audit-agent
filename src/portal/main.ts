@@ -40,13 +40,26 @@ export interface BuildPortalOptions {
 
 /**
  * Build the optional AI skill set from the env-configured LLM. Returns undefined when no LLM is
- * configured (the audit then runs without AI enrichment).
+ * configured (the audit then runs without AI enrichment). Logs whether AI is on at startup so you
+ * can see it in the console.
  */
 async function buildSkills(): Promise<AuditSkillSet | undefined> {
   const llm = loadLlmConfig();
-  if (!llm.enabled) return undefined;
+  if (!llm.enabled) {
+    console.info(
+      "[portal] AI insight: DISABLED (set LLM_API_KEY to enable LLM analysis on FULL/MULTI tiers).",
+    );
+    return undefined;
+  }
   const model = await createChatModel(llm);
-  return model ? new AuditSkillSet(model) : undefined;
+  if (model) {
+    console.info(
+      `[portal] AI insight: ENABLED on FULL/MULTI tiers (model=${llm.model}, endpoint=${llm.baseUrl}).`,
+    );
+    return new AuditSkillSet(model);
+  }
+  console.warn("[portal] AI insight: could not initialize the LLM client; continuing without AI.");
+  return undefined;
 }
 
 /**
