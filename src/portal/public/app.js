@@ -54,6 +54,7 @@ const state = {
   paymentMode: "free",
   metamask: { enabled: false },
   allowCrooKey: false,
+  aiEnabled: false,
   payMethod: "croo", // active modal tab
   mmAccount: null, // connected wallet address
 };
@@ -102,7 +103,9 @@ async function loadTiers() {
     state.allowCrooKey = data.allowCrooKey === true;
     state.chains = Array.isArray(data.chains) ? data.chains : [];
     state.defaultChain = data.defaultChain ?? "ethereum";
+    state.aiEnabled = data.aiEnabled === true;
     applyPaymentMode();
+    applyAiState();
     renderChains();
     renderTiers(data.tiers ?? []);
   } catch {
@@ -137,6 +140,12 @@ function renderChains() {
     els.chainSelect.appendChild(opt);
   }
   els.chainSelect.value = state.defaultChain;
+}
+
+/** Reveal the AI scope note only when an LLM is actually configured (don't promise AI we can't do). */
+function applyAiState() {
+  const note = document.getElementById("scope-note-ai");
+  if (note) note.hidden = !state.aiEnabled;
 }
 
 function renderTiers(tiers) {

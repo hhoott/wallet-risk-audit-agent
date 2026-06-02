@@ -241,11 +241,15 @@ The report is **address-type-first**: the audited address's detected `type` lead
 each type renders a tailored structure (a personal wallet shows its annotated transaction history;
 a token shows its safety signals). The three tiers differ in depth:
 
-| Tier | LLM analysis | Transaction history (EOA) | Related-address analysis |
+| Tier | LLM analysis* | Transaction history (EOA) | Related-address analysis |
 | --- | --- | --- | --- |
 | QUICK | — | — | — |
 | FULL | yes | yes (annotated counterparties) | — |
 | MULTI | yes | yes (longer window) | yes (top counterparties / token owner, each typed + risk-assessed) |
+
+*LLM analysis is included only when `LLM_API_KEY` is configured; otherwise the deterministic report
+is returned unchanged (the AI layer is strictly additive). `GET /api/tiers` reports `aiEnabled` and
+omits AI highlights when no LLM is configured.
 
 Error responses use `{ "error": string, "code"?: string }` with an appropriate status:
 `400` (bad input), `402` (`PAYMENT_REQUIRED` / `PAYMENT_NOT_VERIFIED`), `403` (`CROO_KEY_DISABLED`),

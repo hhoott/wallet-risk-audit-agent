@@ -196,6 +196,63 @@ describe("portal server — validation", () => {
   });
 });
 
+describe("portal server — tier highlights / AI gating", () => {
+  async function tiersWithAi(aiEnabled: boolean) {
+    const server = createPortalServer({
+      config: config("free"),
+      auditor: new FakeAuditor(),
+      aiEnabled,
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+    const srv = await new Promise<{ base: string; close: () => Promise<void> }>((resolve) => {
+      server.listen(0, () => {
+        const { port } = server.address() as AddressInfo;
+        resolve({
+          base: `http://127.0.0.1:${port}`,
+          close: () => new Promise<void>((r) => server.close(() => r())),
+        });
+      });
+    });
+    try {
+      return await (await fetch(`${srv.base}/api/tiers`)).json();
+    } finally {
+      await srv.close();
+    }
+  }
+
+  it("omits AI highlights and reports aiEnabled=false when no LLM is configured", async () => {
+    const data = await tiersWithAi(false);
+    expect(data.aiEnabled).toBe(false);
+    const full = data.tiers.find((t: { tier: string }) => t.tier === "FULL");
+    expect(full.highlights.some((h: string) => h.startsWith("AI "))).toBe(false);
+    // Real, always-on capabilities are still advertised.
+    expect(full.highlights.some((h: string) => h.includes("Annotated transaction history"))).toBe(
+      true,
+    );
+  });
+
+  it("includes AI highlights and reports aiEnabled=true when an LLM is configured", async () => {
+    const data = await tiersWithAi(true);
+    expect(data.aiEnabled).toBe(true);
+    const full = data.tiers.find((t: { tier: string }) => t.tier === "FULL");
+    expect(full.highlights.some((h: string) => h.includes("AI risk explanation"))).toBe(true);
+    const multi = data.tiers.find((t: { tier: string }) => t.tier === "MULTI");
+    expect(multi.highlights.some((h: string) => h.includes("counterparty"))).toBe(true);
+  });
+
+  it("QUICK never advertises AI, history, or asset distribution", async () => {
+    const data = await tiersWithAi(true);
+    const quick = data.tiers.find((t: { tier: string }) => t.tier === "QUICK");
+    const joined = quick.highlights.join(" ").toLowerCase();
+    expect(quick.highlights.some((h: string) => h.startsWith("AI "))).toBe(false);
+    expect(joined).not.toContain("transaction history");
+    expect(joined).not.toContain("asset distribution");
+    // QUICK's real value-adds.
+    expect(joined).toContain("address type");
+    expect(joined).toContain("health score");
+  });
+});
+
 describe("portal server — free mode (no key)", () => {
   it("returns a local report when no key is supplied", async () => {
     const srv = await startServer(config("free"), new FakeAuditor());

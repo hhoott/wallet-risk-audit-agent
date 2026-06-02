@@ -51,7 +51,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "FULL",
     name: "Wallet Full Risk Report",
     description:
-      "Read-only full risk report for a single address with AI insight. Adds, on top of QUICK: complete approval scan, suspicious & high-risk contract classification, asset distribution, failed/abnormal transactions, prioritized revocation links, an annotated recent-transaction history (each counterparty labelled official / risky / contract), a type-specific AI assessment, and a plain-language risk explanation + remediation plan. Read-only; never touches private keys.",
+      "Read-only full risk report for a single address. Adds, on top of QUICK: complete approval scan, suspicious & high-risk contract classification, asset distribution with USD valuation, failed/abnormal transaction detection, an annotated recent-transaction history (each counterparty labelled official / risky / contract), and prioritized revocation links. When an LLM is configured, also includes a type-specific AI assessment plus a plain-language risk explanation and remediation plan. Read-only; never touches private keys.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Risk Assessment"],
     priceUsdc: TIER_PRICE_USDC.FULL,
     inputParameters:
@@ -62,7 +62,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "MULTI",
     name: "Multi-Wallet & Counterparty Analysis",
     description:
-      "Read-only deep analysis across multiple wallets with the longest historical window. Everything in FULL per wallet, plus a combined summary AND a deeper look at related addresses: each wallet's most-interacted counterparties are themselves typed and risk-assessed (and a token/contract's owner is profiled). The top tier for tracing where a wallet's funds actually flow. Read-only; never touches private keys.",
+      "Read-only deep analysis across multiple wallets (up to 50) with a 365-day history window. Everything in FULL per wallet, plus a combined summary AND a deeper look at related addresses: each wallet's most-interacted counterparties are themselves typed and risk-assessed (and a token/contract's owner is profiled). When an LLM is configured, each analyzed counterparty also gets an AI assessment. The top tier for tracing where a wallet's funds actually flow. Read-only; never touches private keys.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Portfolio"],
     priceUsdc: TIER_PRICE_USDC.MULTI,
     inputParameters:

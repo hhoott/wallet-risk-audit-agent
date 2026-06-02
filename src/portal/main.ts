@@ -66,9 +66,9 @@ async function buildSkills(): Promise<AuditSkillSet | undefined> {
  * Build a multi-chain audit engine from the real read-only data providers. Used when the portal
  * runs standalone (no auditor injected). Each supported chain gets its own engine, built lazily on
  * first use (providers target that chain's Etherscan chainid + RPC + CoinGecko platform). Read-only.
- * Adds AI insight when an LLM is configured.
+ * Adds AI insight when an LLM is configured. Returns the engine plus whether AI is active.
  */
-async function buildAuditor(): Promise<LocalAuditor> {
+async function buildAuditor(): Promise<{ auditor: LocalAuditor; aiEnabled: boolean }> {
   // The Provider-side RuntimeConfig only needs CROO_SDK_KEY to load; the data providers ignore the
   // CAP fields, so synthesize a minimal config when CROO_SDK_KEY is absent.
   const runtimeConfig = (() => {
@@ -86,7 +86,7 @@ async function buildAuditor(): Promise<LocalAuditor> {
   // each prompt at call time (so the model knows which chain the facts belong to).
   const skills = await buildSkills();
 
-  return new MultiChainAuditor((chainKey: ChainKey) => {
+  const auditor = new MultiChainAuditor((chainKey: ChainKey) => {
     const chain = getChain(chainKey);
     const retry = new RetryPolicy();
     const providers = buildProvidersFromConfig(runtimeConfig, { retry, chain });
@@ -99,15 +99,19 @@ async function buildAuditor(): Promise<LocalAuditor> {
     });
     return new OrchestratorLocalAuditor(orchestrator, skills, chain);
   });
+  return { auditor, aiEnabled: skills !== undefined };
 }
 
 /** Build (but do not start) the portal HTTP server. */
 export async function buildPortal(options: BuildPortalOptions = {}) {
   const config = options.config ?? loadPortalConfig();
-  const auditor = options.auditor ?? (await buildAuditor());
+  // When an auditor is injected we can't know if it has AI; otherwise we build it and learn.
+  const built = options.auditor ? undefined : await buildAuditor();
+  const auditor = options.auditor ?? built!.auditor;
   const server = createPortalServer({
     config,
     auditor,
+    aiEnabled: built?.aiEnabled ?? false,
     checkoutClientFactory: options.checkoutClientFactory,
   });
   return { config, server };

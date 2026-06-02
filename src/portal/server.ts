@@ -45,26 +45,40 @@ import { MetaMaskPaymentVerifier, BASE_USDC_ADDRESS } from "./metamask-payment.j
 
 const TIER_ORDER: readonly Tier[] = ["QUICK", "FULL", "MULTI"];
 
-/** A short, user-facing summary of what each tier delivers (shown on the cards). */
+/**
+ * A short, user-facing summary of what each tier delivers (shown on the cards). These mirror the
+ * actual tier routing in the orchestrator + report trimming: QUICK is a lean subset (no AI, no
+ * transaction history); FULL adds the full analysis + annotated history; MULTI adds the multi-wallet
+ * fan-out + counterparty deep-dive. AI lines are added separately only when an LLM is configured.
+ */
 const TIER_HIGHLIGHTS: Record<Tier, string[]> = {
   QUICK: [
-    "Wallet Health Score",
+    "Address type detection (wallet / token / NFT / contract)",
+    "Wallet Health Score (0–100) + risk level",
     "Unlimited (infinite) approval detection",
     "Known high-risk contract interactions",
   ],
   FULL: [
     "Everything in Quick",
-    "Suspicious & high-risk contract classification",
+    "Full approval scan + suspicious / high-risk contract classification",
     "Asset distribution & USD valuation",
-    "Failed / abnormal transaction analysis",
-    "Prioritized revocation suggestions",
+    "Failed / abnormal transaction detection",
+    "Annotated transaction history (each counterparty labelled official / risky / contract)",
+    "Prioritized revocation links",
   ],
   MULTI: [
     "Everything in Full, per wallet",
     "Up to 50 wallets in one order",
-    "Longer history window",
+    "Longer history window (365 days)",
     "Combined multi-wallet summary",
+    "Counterparty deep-dive (top peers each typed & risk-rated; token/contract owner profiled)",
   ],
+};
+
+/** AI-powered highlights, appended per tier ONLY when an LLM is configured (otherwise omitted). */
+const TIER_AI_HIGHLIGHTS: Partial<Record<Tier, string[]>> = {
+  FULL: ["AI risk explanation + remediation plan", "Type-specific AI assessment of the address"],
+  MULTI: ["AI assessment of each analyzed counterparty"],
 };
 
 /** The directory holding the static frontend assets (resolved relative to this module). */
@@ -150,15 +164,17 @@ async function readJsonBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise
 // ── API handlers ─────────────────────────────────────────────────────────────────────────
 
 /** Build the tier catalog payload: pricing, highlights, and the payment mode. */
-function buildTiersPayload(config: PortalConfig): unknown {
+function buildTiersPayload(config: PortalConfig, aiEnabled: boolean): unknown {
   const tiers = TIER_ORDER.map((tier) => {
     const meta = SERVICE_CATALOG[tier];
+    // Only advertise AI lines when an LLM is actually configured (don't promise what we can't do).
+    const aiLines = aiEnabled ? (TIER_AI_HIGHLIGHTS[tier] ?? []) : [];
     return {
       tier,
       name: meta.name,
       description: meta.description,
       priceUsdc: TIER_PRICE_USDC[tier],
-      highlights: TIER_HIGHLIGHTS[tier],
+      highlights: [...TIER_HIGHLIGHTS[tier], ...aiLines],
       multi: tier === "MULTI",
       // The agent audits in-process, so every tier is always bookable from the web/API.
       available: true,
@@ -169,6 +185,9 @@ function buildTiersPayload(config: PortalConfig): unknown {
     tiers,
     auditedChain: "Ethereum Mainnet",
     settlementChain: "Base (USDC)",
+    // Whether AI insight is active (LLM configured). The UI uses this to avoid promising AI it
+    // cannot deliver.
+    aiEnabled,
     // The audited chains the user can pick from (read-only, multi-chain via Etherscan V2).
     chains: CHAIN_ORDER.map((key) => ({
       key,
@@ -300,6 +319,8 @@ export interface PortalServerDeps {
   checkoutClientFactory?: CheckoutClientFactory;
   /** MetaMask USDC payment verifier; defaults to one built from config.payeeAddress when present. */
   paymentVerifier?: PaymentVerifier;
+  /** Whether AI insight is active (an LLM is configured). Drives the AI tier highlights. */
+  aiEnabled?: boolean;
   /** Logger; defaults to console. */
   logger?: { info(m: string): void; warn(m: string): void; error(m: string): void };
 }
@@ -319,6 +340,7 @@ interface ServerCtx {
   auditor: LocalAuditor;
   checkoutClientFactory: CheckoutClientFactory;
   paymentVerifier: PaymentVerifier | undefined;
+  aiEnabled: boolean;
   logger: NonNullable<PortalServerDeps["logger"]>;
 }
 
@@ -345,6 +367,7 @@ export function createPortalServer(deps: PortalServerDeps) {
           rpcUrl: cfg.rpcUrl,
         })),
     paymentVerifier: verifier,
+    aiEnabled: deps.aiEnabled ?? false,
     logger: deps.logger ?? defaultLogger(),
   };
 
@@ -371,7 +394,7 @@ async function handleRequest(
     return;
   }
   if (method === "GET" && path === "/api/tiers") {
-    sendJson(res, 200, buildTiersPayload(ctx.config));
+    sendJson(res, 200, buildTiersPayload(ctx.config, ctx.aiEnabled));
     return;
   }
   if (method === "POST" && path === "/api/orders") {
