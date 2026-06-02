@@ -37,6 +37,7 @@ import type {
   HealthScoreResult,
   ModuleStatus,
   MultiWalletReport,
+  AddressStanding,
   RiskItem,
   TxFinding,
   WalletActivity,
@@ -56,7 +57,11 @@ import { analyzeAssets } from "./modules/asset-analyzer.js";
 import { TransactionAnalyzer } from "./modules/transaction-analyzer.js";
 import { generateRevokeAdvice } from "./modules/revoke-advisor.js";
 import { computeHealthScore } from "./modules/health-score-engine.js";
-import { AddressIntel, type AddressIntelOutcome } from "./modules/address-intel.js";
+import {
+  AddressIntel,
+  buildAddressStanding,
+  type AddressIntelOutcome,
+} from "./modules/address-intel.js";
 import { AddressInspector, type AddressInspection } from "./modules/address-inspector.js";
 import { WalletActivityAnalyzer } from "./modules/wallet-activity.js";
 import { DEFAULT_CHAIN, type ChainDescriptor } from "./chains.js";
@@ -308,6 +313,10 @@ export class AuditOrchestrator {
     const isQuick = tier === "QUICK";
 
     const statuses: ModuleStatus[] = [];
+    const addressStandingPromise: Promise<AddressStanding | undefined> = this.inspector
+      .inspect(address)
+      .then((inspection) => buildAddressStanding(inspection.address, inspection.type, inspection.intel))
+      .catch(() => undefined);
 
     // Launch independent modules concurrently: approval scan always; assets + transactions only for
     // FULL/MULTI. None of these three depend on each other.
@@ -404,6 +413,7 @@ export class AuditOrchestrator {
 
     // Revoke_Advisor is pure (links only, no data source); the report trims it per tier.
     const revokeAdvice = generateRevokeAdvice(approvals, contractRisks, this.auditedChain);
+    const addressStanding = await addressStandingPromise;
 
     const inputs: AuditInputs = {
       walletAddress: address,
@@ -417,6 +427,7 @@ export class AuditOrchestrator {
       moduleStatuses: statuses,
       generatedAt,
       chain: this.auditedChain,
+      addressStanding,
     };
     const report = generateReport(inputs);
 

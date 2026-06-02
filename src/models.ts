@@ -27,6 +27,35 @@ export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
  */
 export type AddressType = "EOA" | "ERC20" | "ERC721" | "ERC1155" | "CONTRACT" | "UNKNOWN";
 
+/** Verdict for an address-vetting / counterparty check. */
+export type AddressVerdict = "OFFICIAL" | "LIKELY_SAFE" | "CAUTION" | "DANGEROUS" | "UNKNOWN";
+
+/** User-facing badge level for an address's standing. */
+export type AddressBadgeLevel = "OFFICIAL" | "SAFE" | "CAUTION" | "DANGEROUS" | "UNKNOWN";
+
+/** Stable badge metadata used by the web UI, API JSON, and A2A deliverables. */
+export interface AddressBadge {
+  /** Machine-readable badge tier. */
+  level: AddressBadgeLevel;
+  /** Short label shown as the corner/status badge. */
+  label: string;
+  /** One-sentence explanation of what the badge means. */
+  description: string;
+}
+
+/** Deterministic standing summary for the audited address itself. */
+export interface AddressStanding {
+  address: Address;
+  type: AddressType;
+  verdict: AddressVerdict;
+  riskLevel: RiskLevel;
+  official: boolean;
+  blacklisted: boolean;
+  label?: string;
+  badge: AddressBadge;
+  reasons: string[];
+}
+
 /** Risk level ordering weight (higher = more severe); used for sorting and scoring. */
 export const RISK_LEVEL_ORDER: Record<RiskLevel, number> = {
   LOW: 0,
@@ -221,10 +250,12 @@ export interface RelatedAddressAnalysis {
   /** Detected on-chain type of the related address. */
   type: AddressType;
   /** Machine-readable risk verdict (mirrors AddressIntel's verdict enum). */
-  verdict: string;
+  verdict: AddressVerdict;
+  riskLevel: RiskLevel;
   official: boolean;
   blacklisted: boolean;
   label?: string;
+  badge: AddressBadge;
   /** Human-readable reasons backing the verdict. */
   reasons: string[];
   /** Type-specific AI assessment (Markdown), present when an LLM is configured. */
@@ -319,6 +350,8 @@ export interface AuditReportStructured {
   healthGrade: HealthGrade;
   /** Machine-readable risk summary field (requirements 5.2/14.7). */
   riskLevelSummary: RiskLevel;
+  /** Deterministic address type/verdict/badge summary, included in API JSON and A2A delivery. */
+  addressStanding?: AddressStanding;
   scoredOnIncompleteData: boolean;
   approvals: ApprovalRecord[];
   contractRisks: ContractRisk[];

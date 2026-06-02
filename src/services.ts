@@ -40,7 +40,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "QUICK",
     name: "Wallet Quick Check-up",
     description:
-      "Read-only quick safety check for a single address: detects the address type (wallet / token / NFT / contract), returns a Wallet Health Score plus unlimited (infinite) token approvals and any interactions with known high-risk contracts. No AI and no transaction history — the fast, cheap screen. Never touches private keys; never sends transactions.",
+      "Read-only quick safety check for a single address: detects the address type (wallet / token / NFT / contract), returns a Wallet Health Score plus an addressStanding badge (Official verified / Likely safe / Use caution / Dangerous / Unknown), unlimited (infinite) token approvals and any interactions with known high-risk contracts. No AI and no transaction history — the fast, cheap screen. Never touches private keys; never sends transactions.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Monitoring"],
     priceUsdc: TIER_PRICE_USDC.QUICK,
     inputParameters:
@@ -51,7 +51,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "FULL",
     name: "Wallet Full Risk Report",
     description:
-      "Read-only full risk report for a single address. Adds, on top of QUICK: complete approval scan, suspicious & high-risk contract classification, asset distribution with USD valuation, failed/abnormal transaction detection, an annotated recent-transaction history (each counterparty labelled official / risky / contract), and prioritized revocation links. When an LLM is configured, also includes a type-specific AI assessment plus a plain-language risk explanation and remediation plan. Read-only; never touches private keys.",
+      "Read-only full risk report for a single address. Adds, on top of QUICK: complete approval scan, suspicious & high-risk contract classification, asset distribution with USD valuation, failed/abnormal transaction detection, an annotated recent-transaction history (each counterparty labelled official / risky / contract), and prioritized revocation links. The structured JSON includes addressStanding with official/blacklist flags and a display badge. When an LLM is configured, it must reference that badge in the type-specific AI assessment plus the plain-language risk explanation and remediation plan. Read-only; never touches private keys.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Risk Assessment"],
     priceUsdc: TIER_PRICE_USDC.FULL,
     inputParameters:
@@ -62,7 +62,7 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
     tier: "MULTI",
     name: "Multi-Wallet & Counterparty Analysis",
     description:
-      "Read-only deep analysis across multiple wallets (up to 50) with a 365-day history window. Everything in FULL per wallet, plus a combined summary AND a deeper look at related addresses: each wallet's most-interacted counterparties are themselves typed and risk-assessed (and a token/contract's owner is profiled). When an LLM is configured, each analyzed counterparty also gets an AI assessment. The top tier for tracing where a wallet's funds actually flow. Read-only; never touches private keys.",
+      "Read-only deep analysis across multiple wallets (up to 50) with a 365-day history window. Everything in FULL per wallet, plus a combined summary AND a deeper look at related addresses: each wallet's most-interacted counterparties are themselves typed, risk-assessed and given their own badge (Official verified / Likely safe / Use caution / Dangerous / Unknown), and a token/contract's owner is profiled. When an LLM is configured, each analyzed counterparty also gets an AI assessment that references the badge. The top tier for tracing where a wallet's funds actually flow. Read-only; never touches private keys.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Portfolio"],
     priceUsdc: TIER_PRICE_USDC.MULTI,
     inputParameters:
@@ -88,6 +88,12 @@ export const DELIVERABLE_SCHEMA_FIELDS: { name: string; type: string; descriptio
     description: "Qualitative grade (EXCELLENT/GOOD/FAIR/POOR).",
   },
   { name: "riskLevelSummary", type: "string", description: "Machine-readable overall risk level." },
+  {
+    name: "addressStanding",
+    type: "object",
+    description:
+      "Deterministic audited-address standing: { address, type, verdict, riskLevel, official, blacklisted, label?, badge, reasons[] }. badge.level is OFFICIAL / SAFE / CAUTION / DANGEROUS / UNKNOWN and badge.label is shown as the result-page corner/status badge.",
+  },
   { name: "approvals", type: "array", description: "Approval records." },
   { name: "contractRisks", type: "array", description: "Suspicious / high-risk contracts." },
   { name: "assets", type: "object", description: "Asset distribution (null when not in scope)." },

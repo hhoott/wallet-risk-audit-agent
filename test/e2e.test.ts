@@ -95,6 +95,10 @@ function mockChainData(): MockChainData {
         },
       ],
     },
+    addressType: {
+      [RISKY_WALLET]: "EOA",
+      [CLEAN_WALLET]: "EOA",
+    },
   };
 }
 
@@ -110,6 +114,7 @@ function mockProviders(): {
     rules: new MockRiskRuleSource({
       [DRAINER]: { blacklisted: true, label: "Known Drainer" },
       [HIGH_RISK_CONTRACT]: { blacklisted: true, label: "Phishing Contract" },
+      [CLEAN_WALLET]: { official: true, label: "Official Treasury" },
     }),
   };
 }
@@ -346,6 +351,10 @@ describe("E2E — regression assertions (clean vs. risky wallet)", () => {
     expect(report.healthScore).toBe(100);
     expect(report.healthGrade).toBe("EXCELLENT");
     expect(report.riskLevelSummary).toBe("LOW");
+    expect((report.addressStanding as { official?: boolean })?.official).toBe(true);
+    expect(
+      (report.addressStanding as { badge?: { level?: string; label?: string } })?.badge?.level,
+    ).toBe("OFFICIAL");
     expect(Array.isArray(report.revokeAdvice)).toBe(true);
     expect((report.revokeAdvice as unknown[]).length).toBe(0);
   });

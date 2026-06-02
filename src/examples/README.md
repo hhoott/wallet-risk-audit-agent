@@ -23,7 +23,7 @@ There is no `npm run require` script in the current `package.json`.
 3. `payOrder(orderId)`
 4. `getDelivery(orderId)`
 5. parse `deliverableSchema`
-6. gate a downstream decision with `riskLevelSummary` and `healthScore`
+6. gate a downstream decision with `riskLevelSummary`, `healthScore`, and optionally `addressStanding.badge`
 
 The current runnable CLI keeps event handling intentionally small: it expects the created order ID in `CROO_TARGET_ORDER_ID`. In a full requester agent, that value would normally come from the `order_created` WebSocket event or from polling `listOrders` for the negotiation.
 
@@ -90,6 +90,17 @@ Otherwise it proceeds. This logic is implemented in:
 - `decideFromDelivery`
 
 These functions are pure and can be reused by another requester agent without the CLI wrapper.
+
+The delivered JSON also includes `addressStanding` when the Provider can verify the audited
+address's standing. Use `addressStanding.badge.level` for UI or policy labels:
+
+| Badge level | Meaning |
+| --- | --- |
+| `OFFICIAL` | Curated official / known-good address. |
+| `SAFE` | No deterministic risk signals found. |
+| `CAUTION` | Suspicious or incomplete signals need review. |
+| `DANGEROUS` | Blacklisted or high-risk signals found. |
+| `UNKNOWN` | Not enough data for a confident claim. |
 
 ## Single Wallet vs Multi Wallet
 

@@ -33,7 +33,10 @@ const SYSTEM_PROMPT =
   "report as JSON. Explain and advise STRICTLY based on the data in that JSON — never invent " +
   "approvals, contracts, balances, or transactions that are not present. Be concise, concrete, and " +
   "practical. Never ask for private keys or seed phrases; revocation is done by the user in their " +
-  "own wallet. If the data is insufficient for a claim, say so.";
+  "own wallet. If the data is insufficient for a claim, say so. When the JSON contains " +
+  "`addressStanding` or `badge`, explicitly use that badge: official addresses must be marked " +
+  "as Official verified; non-official addresses must be described according to their badge level " +
+  "(Likely safe, Use caution, Dangerous, or Unknown).";
 
 /**
  * A one-line chain context appended to a prompt so the model interprets the facts on the right
@@ -70,7 +73,8 @@ export async function explainRisks(
     compactReport(report) +
     chainContext(chainLabel) +
     "\n\nWrite a short plain-language risk explanation for the wallet owner. Lead with the overall " +
-    "health and risk level, then explain the 3-5 most important findings (unlimited approvals, " +
+    "health, risk level, and addressStanding.badge label when present. If addressStanding.official " +
+    "is true, explicitly mark the address as Official verified. Then explain the 3-5 most important findings (unlimited approvals, " +
     "high-risk/suspicious contracts, risky transactions) and WHY each is dangerous. Use Markdown " +
     "with short bullet points. Do not list findings that are not in the JSON.";
   return model.complete(SYSTEM_PROMPT, user, "explainRisks");
@@ -128,8 +132,9 @@ export async function explainAddress(
     JSON.stringify(intel) +
     chainContext(chainLabel) +
     "\n\nIn plain language, tell the user whether it is safe to send funds to or interact with this " +
-    "address, based ONLY on this data. Lead with the verdict (official / likely safe / caution / " +
-    "dangerous), then the key reasons. If it is an EOA or unverified contract, note the caveat. " +
+    "address, based ONLY on this data. Lead with the badge/verdict (Official verified / Likely " +
+    "safe / Use caution / Dangerous / Unknown), then the key reasons. If official is true, say " +
+    "Official verified explicitly. If it is an EOA or unverified contract, note the caveat. " +
     "Be concise; use Markdown. Remind them to always double-check addresses themselves.";
   return model.complete(SYSTEM_PROMPT, user, "explainAddress");
 }
@@ -172,7 +177,9 @@ export async function analyzeByType(
     "\n\nFacts JSON:\n\n" +
     JSON.stringify(facts) +
     "\n\nWrite a concise Markdown assessment grounded ONLY in these facts. Lead with a one-line " +
-    "verdict, then the key reasons, then a short 'what to do' note. Do not invent data.";
+    "verdict using the provided badge/verdict fields when present. If official is true, mark it " +
+    "as Official verified. Otherwise use the badge level to distinguish Likely safe, Use caution, " +
+    "Dangerous, or Unknown. Then give the key reasons and a short 'what to do' note. Do not invent data.";
   return model.complete(SYSTEM_PROMPT, user, `analyzeByType:${addressType}`);
 }
 

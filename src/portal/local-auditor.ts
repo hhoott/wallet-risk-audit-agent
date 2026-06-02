@@ -24,21 +24,27 @@ import type {
   AuditReportStructured,
   MultiWalletReport,
   AddressType,
+  AddressBadge,
+  AddressVerdict,
+  RiskLevel,
   WalletActivity,
   RelatedAddressAnalysis,
 } from "../models.js";
 import type { AuditSkillSet } from "../llm/skills.js";
 import type { TokenContractInfo } from "../datasource/types.js";
 import { DEFAULT_CHAIN, type ChainDescriptor } from "../chains.js";
+import { buildAddressStanding } from "../modules/address-intel.js";
 
 /** One audited address's type-aware inspection (deterministic facts + optional AI assessment). */
 export interface AddressIntelEntry {
   address: string;
   type: AddressType;
-  verdict: string;
+  verdict: AddressVerdict;
+  riskLevel: RiskLevel;
   official: boolean;
   blacklisted: boolean;
   label?: string;
+  badge: AddressBadge;
   reasons: string[];
   /** Token security signals, present only for ERC-20 token contracts. */
   token?: TokenContractInfo;
@@ -182,14 +188,17 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
   ): Promise<AddressIntelEntry | undefined> {
     try {
       const inspection = await inspectAddress(address);
+      const standing = buildAddressStanding(inspection.address, inspection.type, inspection.intel);
       const entry: AddressIntelEntry = {
         address: inspection.address,
         type: inspection.type,
-        verdict: inspection.intel.verdict,
-        official: inspection.intel.official,
-        blacklisted: inspection.intel.blacklisted,
-        label: inspection.intel.label,
-        reasons: inspection.intel.reasons,
+        verdict: standing.verdict,
+        riskLevel: standing.riskLevel,
+        official: standing.official,
+        blacklisted: standing.blacklisted,
+        label: standing.label,
+        badge: standing.badge,
+        reasons: standing.reasons,
         token: inspection.token,
       };
 
@@ -263,16 +272,19 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
       targets.map(async (t) => {
         try {
           const sub = await inspectAddress(t.address);
+          const standing = buildAddressStanding(sub.address, sub.type, sub.intel);
           const analysis: RelatedAddressAnalysis = {
             address: sub.address,
             relation: t.relation,
             interactions: t.interactions,
             type: sub.type,
-            verdict: sub.intel.verdict,
-            official: sub.intel.official,
-            blacklisted: sub.intel.blacklisted,
-            label: sub.intel.label,
-            reasons: sub.intel.reasons,
+            verdict: standing.verdict,
+            riskLevel: standing.riskLevel,
+            official: standing.official,
+            blacklisted: standing.blacklisted,
+            label: standing.label,
+            badge: standing.badge,
+            reasons: standing.reasons,
           };
           if (this.skills !== undefined) {
             try {

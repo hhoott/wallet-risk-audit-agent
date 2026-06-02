@@ -32,6 +32,8 @@ describe("Address_Intel — pure verdict", () => {
     };
     const r = analyzeAddress(OFFICIAL, rule, meta({ contract: OFFICIAL }), NOW);
     expect(r.verdict).toBe("OFFICIAL");
+    expect(r.badge.level).toBe("OFFICIAL");
+    expect(r.badge.label).toBe("Official verified");
     expect(r.official).toBe(true);
     expect(r.label).toBe("Uniswap V3 Router");
   });
@@ -40,6 +42,7 @@ describe("Address_Intel — pure verdict", () => {
     const rule: RiskRuleEntry = { contract: SCAM, blacklisted: true, label: "Drainer" };
     const r = analyzeAddress(SCAM, rule, meta({ contract: SCAM }), NOW);
     expect(r.verdict).toBe("DANGEROUS");
+    expect(r.badge.level).toBe("DANGEROUS");
     expect(r.blacklisted).toBe(true);
     expect(r.matchedFeatures).toContain("BLACKLISTED");
   });
@@ -48,6 +51,7 @@ describe("Address_Intel — pure verdict", () => {
     const rule: RiskRuleEntry = { contract: FRESH, blacklisted: false };
     const r = analyzeAddress(FRESH, rule, meta({ contract: FRESH }), NOW);
     expect(r.verdict).toBe("LIKELY_SAFE");
+    expect(r.badge.level).toBe("SAFE");
     expect(r.matchedFeatures).toEqual([]);
   });
 

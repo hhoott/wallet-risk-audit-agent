@@ -16,7 +16,7 @@
  */
 
 import type { Address, AddressType } from "../models.js";
-import { analyzeAddress, type AddressIntelResult } from "./address-intel.js";
+import { analyzeAddress, badgeForVerdict, type AddressIntelResult } from "./address-intel.js";
 import type {
   ChainDataSource,
   ContractMeta,
@@ -65,6 +65,7 @@ function eoaVerdict(base: AddressIntelResult, rule: RiskRuleEntry): AddressIntel
       verdict: "DANGEROUS",
       riskLevel: "CRITICAL",
       matchedFeatures: base.matchedFeatures.includes("BLACKLISTED") ? ["BLACKLISTED"] : [],
+      badge: badgeForVerdict("DANGEROUS", false, true),
       reasons: ["Address matches a community blacklist (phishing / drainer / scam)."],
     };
   }
@@ -74,6 +75,7 @@ function eoaVerdict(base: AddressIntelResult, rule: RiskRuleEntry): AddressIntel
       verdict: "OFFICIAL",
       riskLevel: "LOW",
       matchedFeatures: [],
+      badge: badgeForVerdict("OFFICIAL", true, false),
       reasons: [`Recognized as an official / known wallet${base.label ? ` (${base.label})` : ""}.`],
     };
   }
@@ -82,6 +84,7 @@ function eoaVerdict(base: AddressIntelResult, rule: RiskRuleEntry): AddressIntel
     verdict: "LIKELY_SAFE",
     riskLevel: "LOW",
     matchedFeatures: [],
+    badge: badgeForVerdict("LIKELY_SAFE", false, false),
     reasons: [
       "Externally-owned wallet (EOA). No blacklist or official-list match. Always double-check the address before sending funds.",
     ],

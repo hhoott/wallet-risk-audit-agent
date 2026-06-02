@@ -20,6 +20,7 @@ This project currently exposes the same wallet-risk audit engine in three ways:
 - Reads public on-chain data across multiple EVM chains (Ethereum, Base, Arbitrum, Optimism, Polygon); it never asks for private keys and never sends transactions for the audit itself.
 - Analyzes balances, token holdings, approvals, contract interactions, high-risk counterparties, failed transactions, and recent activity.
 - Produces both a human-readable Markdown report and a structured JSON deliverable.
+- Marks the audited address with deterministic standing: official verification, risk verdict, and a display badge.
 - Supports three service tiers: `QUICK` (0.5 USDC), `FULL` (2 USDC), and `MULTI` (5 USDC).
 - Adds optional LangChain/OpenAI-compatible LLM analysis when `LLM_API_KEY` is configured.
 - Supports web payment gating through demo/free mode, CAP checkout with a user-supplied CROO key, or MetaMask USDC transfer verification on Base.
@@ -68,7 +69,7 @@ The Provider is the production A2A service surface. Another CAP Requester Agent 
 2. Pay the created order with `payOrder`, locking USDC in CAPVault escrow on Base.
 3. Wait for this Provider to audit the requested wallet(s).
 4. Fetch the delivery with `getDelivery`.
-5. Use the structured report fields such as `riskLevelSummary` and `healthScore`.
+5. Use the structured report fields such as `riskLevelSummary`, `healthScore`, and `addressStanding.badge`.
 
 Provider flow in this repo:
 
@@ -92,7 +93,7 @@ export CROO_TARGET_ORDER_ID="order_created_by_the_negotiation"
 npm run requester -- 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
-The example demonstrates the consumer side of A2A composability: hire the audit agent, fetch the CAP delivery, parse the structured JSON, and decide whether to proceed or abort based on `riskLevelSummary` and `healthScore`.
+The example demonstrates the consumer side of A2A composability: hire the audit agent, fetch the CAP delivery, parse the structured JSON, and decide whether to proceed or abort based on `riskLevelSummary`, `healthScore`, and the audited address's `addressStanding` badge.
 
 ## HTTP API Mode
 
@@ -173,6 +174,21 @@ On success (`200`), the JSON body has these fields:
   "healthScore": 88,                  // 0–100
   "healthGrade": "EXCELLENT",         // EXCELLENT | GOOD | FAIR | POOR
   "riskLevelSummary": "LOW",          // LOW | MEDIUM | HIGH | CRITICAL
+  "addressStanding": {
+    "address": "0x…",
+    "type": "EOA",                    // EOA | ERC20 | ERC721 | ERC1155 | CONTRACT | UNKNOWN
+    "verdict": "OFFICIAL",            // OFFICIAL | LIKELY_SAFE | CAUTION | DANGEROUS | UNKNOWN
+    "riskLevel": "LOW",               // LOW | MEDIUM | HIGH | CRITICAL
+    "official": true,                 // true when verified by the curated official/known-good list
+    "blacklisted": false,
+    "label": "Uniswap V3 Router",
+    "badge": {
+      "level": "OFFICIAL",            // OFFICIAL | SAFE | CAUTION | DANGEROUS | UNKNOWN
+      "label": "Official verified",
+      "description": "Matched the curated official / known-good address list."
+    },
+    "reasons": ["Recognized as an official / known address (Uniswap V3 Router)."]
+  },
   "scoredOnIncompleteData": false,
   "readOnlyDeclaration": "…",
   "approvals": [],                    // ApprovalRecord[]
@@ -191,8 +207,14 @@ Each `addressIntel[]` entry:
   "address": "0x…",
   "type": "EOA",                      // EOA | ERC20 | ERC721 | ERC1155 | CONTRACT | UNKNOWN
   "verdict": "LIKELY_SAFE",           // OFFICIAL | LIKELY_SAFE | CAUTION | DANGEROUS | UNKNOWN
+  "riskLevel": "LOW",
   "official": false,
   "blacklisted": false,
+  "badge": {
+    "level": "SAFE",                  // OFFICIAL | SAFE | CAUTION | DANGEROUS | UNKNOWN
+    "label": "Likely safe",
+    "description": "No risk signals were found in the available deterministic data."
+  },
   "label": "…",                       // curated label, if known
   "reasons": ["…"],
   "token": {                          // present for ERC-20 token contracts
@@ -228,8 +250,10 @@ Each `addressIntel[]` entry:
       "interactions": 6,
       "type": "CONTRACT",
       "verdict": "CAUTION",
+      "riskLevel": "MEDIUM",
       "official": false,
       "blacklisted": false,
+      "badge": { "level": "CAUTION", "label": "Use caution", "description": "…" },
       "reasons": ["…"],
       "aiAssessment": "…"             // Markdown; present when an LLM is configured
     }

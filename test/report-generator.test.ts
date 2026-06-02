@@ -191,6 +191,24 @@ const auditInputsArb: fc.Arbitrary<AuditInputs> = fc.record({
   generatedAt: fc.constant("2024-06-15T12:30:00.000Z"),
 });
 
+function officialStanding(address: Address) {
+  return {
+    address,
+    type: "EOA" as const,
+    verdict: "OFFICIAL" as const,
+    riskLevel: "LOW" as const,
+    official: true,
+    blacklisted: false,
+    label: "Official Treasury",
+    badge: {
+      level: "OFFICIAL" as const,
+      label: "Official verified",
+      description: "Matched the curated official / known-good address list.",
+    },
+    reasons: ["Recognized as an official / known address (Official Treasury)."],
+  };
+}
+
 /** Structural deep-equality check (independent of JSON for the round-trip assertion). */
 function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
@@ -472,5 +490,33 @@ describe("Report_Generator — unit tests", () => {
       }),
       { numRuns: 100 },
     );
+  });
+
+  it("embeds addressStanding in the structured report and human-readable output", () => {
+    const wallet = addrFromIndex(42);
+    const inputs: AuditInputs = {
+      walletAddress: wallet,
+      tier: "FULL",
+      healthScore: {
+        score: 100,
+        grade: "EXCELLENT",
+        deductions: [],
+        scoredOnIncompleteData: false,
+      },
+      approvals: [],
+      contractRisks: [],
+      assets: null,
+      txFindings: [],
+      revokeAdvice: [],
+      moduleStatuses: [],
+      generatedAt: "2024-06-15T12:30:00.000Z",
+      addressStanding: officialStanding(wallet),
+    };
+
+    const report = generateReport(inputs);
+    expect(report.structured.addressStanding?.badge.level).toBe("OFFICIAL");
+    expect(report.structured.addressStanding?.official).toBe(true);
+    expect(report.humanReadable).toContain("Address Badge: Official verified");
+    expect(report.humanReadable).toContain("## Address Standing");
   });
 });

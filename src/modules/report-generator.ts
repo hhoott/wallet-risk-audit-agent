@@ -30,6 +30,7 @@ import type {
   AssetDistribution,
   AuditReport,
   AuditReportStructured,
+  AddressStanding,
   ContractRisk,
   HealthScoreResult,
   ModuleStatus,
@@ -71,6 +72,8 @@ export interface AuditInputs {
   generatedAt?: string;
   /** The audited chain. Defaults to Ethereum Mainnet (backward-compatible). */
   chain?: ChainDescriptor;
+  /** Deterministic address standing summary embedded into API JSON and A2A delivery. */
+  addressStanding?: AddressStanding;
 }
 
 // ── Risk level summary (requirement 14.7 / 5.2) ─────────────────────────────────
@@ -179,7 +182,7 @@ export function buildStructuredReport(inputs: AuditInputs): AuditReportStructure
   const trimmed = applyTierTrimming(inputs);
   const riskLevelSummary = computeRiskLevelSummary(trimmed.contractRisks, trimmed.revokeAdvice);
 
-  return {
+  const structured: AuditReportStructured = {
     schemaVersion: SCHEMA_VERSION,
     walletAddress: inputs.walletAddress,
     auditedChain: chain.name,
@@ -198,6 +201,8 @@ export function buildStructuredReport(inputs: AuditInputs): AuditReportStructure
     revokeAdvice: trimmed.revokeAdvice,
     moduleStatuses: inputs.moduleStatuses,
   };
+  if (inputs.addressStanding !== undefined) structured.addressStanding = inputs.addressStanding;
+  return structured;
 }
 
 // ── Human-readable form (requirement 14.6 / 13.4 / 17.3) ─────────────────────────
@@ -229,10 +234,31 @@ export function renderHumanReadable(s: AuditReportStructured): string {
   lines.push(`- Score: ${s.healthScore} / 100`);
   lines.push(`- Grade: ${s.healthGrade}`);
   lines.push(`- Overall Risk Level: ${s.riskLevelSummary}`);
+  if (s.addressStanding) {
+    lines.push(`- Address Badge: ${s.addressStanding.badge.label}`);
+    lines.push(`- Address Verdict: ${s.addressStanding.verdict}`);
+    lines.push(`- Address Type: ${s.addressStanding.type}`);
+    if (s.addressStanding.label) lines.push(`- Address Label: ${s.addressStanding.label}`);
+  }
   if (s.scoredOnIncompleteData) {
     lines.push("- Note: this score was computed on incomplete data.");
   }
   lines.push("");
+
+  if (s.addressStanding) {
+    lines.push("## Address Standing");
+    lines.push(`- Badge: ${s.addressStanding.badge.label}`);
+    lines.push(`- Badge Level: ${s.addressStanding.badge.level}`);
+    lines.push(`- Official: ${s.addressStanding.official}`);
+    lines.push(`- Blacklisted: ${s.addressStanding.blacklisted}`);
+    lines.push(`- Meaning: ${s.addressStanding.badge.description}`);
+    if (s.addressStanding.reasons.length === 0) {
+      lines.push("- No standing reasons reported.");
+    } else {
+      for (const reason of s.addressStanding.reasons) lines.push(`- ${reason}`);
+    }
+    lines.push("");
+  }
 
   lines.push("## Unlimited / Flagged Approvals");
   if (s.approvals.length === 0) {

@@ -93,6 +93,26 @@ function verdictLabel(v) {
   return map[v] ?? v;
 }
 
+/** Badge fallback for older payloads that only carry verdict/official fields. */
+function addressBadge(obj) {
+  if (obj?.badge?.level && obj?.badge?.label) return obj.badge;
+  const verdict = obj?.verdict ?? "UNKNOWN";
+  if (obj?.blacklisted || verdict === "DANGEROUS") {
+    return { level: "DANGEROUS", label: "Dangerous" };
+  }
+  if (obj?.official || verdict === "OFFICIAL") {
+    return { level: "OFFICIAL", label: "Official verified" };
+  }
+  if (verdict === "LIKELY_SAFE") return { level: "SAFE", label: "Likely safe" };
+  if (verdict === "CAUTION") return { level: "CAUTION", label: "Use caution" };
+  return { level: "UNKNOWN", label: "Unknown" };
+}
+
+function renderAddressBadge(obj) {
+  const badge = addressBadge(obj);
+  return h("span", { class: `addrbadge addrbadge--${badge.level}`, text: badge.label });
+}
+
 /** Block-explorer transaction base per chain key (matches src/chains.ts). */
 const EXPLORER_TX = {
   ethereum: "https://etherscan.io/tx",
@@ -136,9 +156,9 @@ function renderTypeHero(intel) {
   body.appendChild(h("p", { class: "typehero__addr", text: intel?.address ?? "" }));
 
   const tags = h("div", { class: "typehero__tags" });
+  tags.appendChild(renderAddressBadge(intel));
   tags.appendChild(h("span", { class: `vetverdict vetverdict--${verdict}`, text: verdictLabel(verdict) }));
   if (intel?.label) tags.appendChild(h("span", { class: "intel__label", text: intel.label }));
-  if (intel?.official) tags.appendChild(h("span", { class: "chip chip--paid", text: "Official" }));
   if (intel?.blacklisted) tags.appendChild(h("span", { class: "badge badge--CRITICAL", text: "Blacklisted" }));
   body.appendChild(tags);
   hero.appendChild(body);
@@ -285,6 +305,7 @@ function renderRelatedCard(related) {
     const block = h("div", { class: `intel intel--${r.type}` });
     const head = h("div", { class: "intel__head" });
     head.appendChild(h("span", { class: "intel__icon", text: typeIcon(r.type), attrs: { "aria-hidden": "true" } }));
+    head.appendChild(renderAddressBadge(r));
     head.appendChild(h("span", { class: `vetverdict vetverdict--${r.verdict}`, text: verdictLabel(r.verdict) }));
     head.appendChild(h("span", { class: "intel__type", text: typeLabel(r.type) }));
     if (r.relation === "COUNTERPARTY" && r.interactions) {
@@ -353,6 +374,12 @@ function renderSingle(r) {
   meta.appendChild(h("p", { class: "report__addr", text: r.walletAddress ?? "" }));
   const risk = r.riskLevelSummary ?? "LOW";
   meta.appendChild(h("span", { class: `badge badge--${risk}`, text: `${risk} risk` }));
+  if (r.addressStanding) {
+    meta.appendChild(renderAddressBadge(r.addressStanding));
+    if (r.addressStanding.label) {
+      meta.appendChild(h("span", { class: "intel__label", text: r.addressStanding.label }));
+    }
+  }
   if (r.scoredOnIncompleteData) {
     meta.appendChild(
       h("p", { class: "report__warn", text: "⚠ Scored on partial data (a data source was unavailable)." }),
@@ -585,7 +612,13 @@ export function renderReportInto(container, data) {
   container.innerHTML = "";
   const structured = data.structured;
   const isMulti = structured && Array.isArray(structured.reports);
-  const intelList = Array.isArray(data.addressIntel) ? data.addressIntel : [];
+  const explicitIntel = Array.isArray(data.addressIntel) ? data.addressIntel : [];
+  const standingIntel = isMulti
+    ? (structured.reports ?? []).map((r) => r.addressStanding).filter(Boolean)
+    : structured?.addressStanding
+      ? [structured.addressStanding]
+      : [];
+  const intelList = explicitIntel.length > 0 ? explicitIntel : standingIntel;
 
   // Build a lookup from wallet address → structured report (for embedding under an EOA hero).
   const reportByAddr = new Map();

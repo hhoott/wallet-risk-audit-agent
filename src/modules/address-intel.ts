@@ -13,7 +13,14 @@
  * they are unit/property-testable with in-memory mocks. Strictly read-only — no signing path.
  */
 
-import type { Address, RiskLevel } from "../models.js";
+import type {
+  Address,
+  AddressBadge,
+  AddressStanding,
+  AddressType,
+  AddressVerdict,
+  RiskLevel,
+} from "../models.js";
 import type {
   ChainDataSource,
   ContractMeta,
@@ -27,8 +34,7 @@ import {
 } from "./risk-classifier.js";
 import type { SuspiciousFeature } from "../models.js";
 
-/** Verdict for an address-vetting / counterparty check. */
-export type AddressVerdict = "OFFICIAL" | "LIKELY_SAFE" | "CAUTION" | "DANGEROUS" | "UNKNOWN";
+export type { AddressVerdict } from "../models.js";
 
 /** Structured result of vetting a single address. */
 export interface AddressIntelResult {
@@ -45,6 +51,8 @@ export interface AddressIntelResult {
   verdict: AddressVerdict;
   /** Risk level derived from the suspicious-feature analysis. */
   riskLevel: RiskLevel;
+  /** Stable UI/API/A2A badge derived from verdict + official/blacklist status. */
+  badge: AddressBadge;
   /** The suspicious features detected (subset of the 6 standard features). */
   matchedFeatures: SuspiciousFeature[];
   /** Human-readable reasons backing the verdict. */
@@ -84,6 +92,67 @@ export function deriveVerdict(
   return "CAUTION";
 }
 
+/** Build the stable badge shown in the result page and exported in JSON/A2A deliverables. */
+export function badgeForVerdict(
+  verdict: AddressVerdict,
+  official: boolean,
+  blacklisted: boolean,
+): AddressBadge {
+  if (blacklisted || verdict === "DANGEROUS") {
+    return {
+      level: "DANGEROUS",
+      label: "Dangerous",
+      description: "Blacklisted or high-risk signals were found; do not interact unless independently verified.",
+    };
+  }
+  if (official || verdict === "OFFICIAL") {
+    return {
+      level: "OFFICIAL",
+      label: "Official verified",
+      description: "Matched the curated official / known-good address list.",
+    };
+  }
+  if (verdict === "LIKELY_SAFE") {
+    return {
+      level: "SAFE",
+      label: "Likely safe",
+      description: "No risk signals were found in the available deterministic data.",
+    };
+  }
+  if (verdict === "CAUTION") {
+    return {
+      level: "CAUTION",
+      label: "Use caution",
+      description: "Some suspicious or incomplete signals were found; review the reasons before interacting.",
+    };
+  }
+  return {
+    level: "UNKNOWN",
+    label: "Unknown",
+    description: "The available data is not enough to make a confident legitimacy claim.",
+  };
+}
+
+/** Convert a full Address_Intel result into the compact standing summary embedded in reports. */
+export function buildAddressStanding(
+  address: Address,
+  type: AddressType,
+  intel: AddressIntelResult,
+): AddressStanding {
+  const standing: AddressStanding = {
+    address,
+    type,
+    verdict: intel.verdict,
+    riskLevel: intel.riskLevel,
+    official: intel.official,
+    blacklisted: intel.blacklisted,
+    badge: badgeForVerdict(intel.verdict, intel.official, intel.blacklisted),
+    reasons: intel.reasons,
+  };
+  if (intel.label !== undefined) standing.label = intel.label;
+  return standing;
+}
+
 /**
  * Build the full Address_Intel result from the rule entry + contract metadata. Pure given inputs.
  */
@@ -119,6 +188,7 @@ export function analyzeAddress(
     verdict,
     riskLevel,
     matchedFeatures: matched,
+    badge: badgeForVerdict(verdict, rule.official === true, rule.blacklisted === true),
     reasons,
     meta,
   };
