@@ -315,7 +315,9 @@ export class AuditOrchestrator {
     const statuses: ModuleStatus[] = [];
     const addressStandingPromise: Promise<AddressStanding | undefined> = this.inspector
       .inspect(address)
-      .then((inspection) => buildAddressStanding(inspection.address, inspection.type, inspection.intel))
+      .then((inspection) =>
+        buildAddressStanding(inspection.address, inspection.type, inspection.intel),
+      )
       .catch(() => undefined);
 
     // Launch independent modules concurrently: approval scan always; assets + transactions only for

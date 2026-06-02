@@ -102,7 +102,8 @@ export function badgeForVerdict(
     return {
       level: "DANGEROUS",
       label: "Dangerous",
-      description: "Blacklisted or high-risk signals were found; do not interact unless independently verified.",
+      description:
+        "Blacklisted or high-risk signals were found; do not interact unless independently verified.",
     };
   }
   if (official || verdict === "OFFICIAL") {
@@ -123,7 +124,8 @@ export function badgeForVerdict(
     return {
       level: "CAUTION",
       label: "Use caution",
-      description: "Some suspicious or incomplete signals were found; review the reasons before interacting.",
+      description:
+        "Some suspicious or incomplete signals were found; review the reasons before interacting.",
     };
   }
   return {
