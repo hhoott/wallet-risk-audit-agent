@@ -136,75 +136,83 @@ display name (e.g. `8453`, `"Base"`). Omit it to audit Ethereum Mainnet. See
 
 #### Paying in `paid` mode
 
-If the portal is configured with **`PORTAL_PAYMENT_MODE=paid`**, the request above without payment credentials will fail with `402 Payment Required`. You must include payment fields depending on the selected path:
+Depending on your setup, you can choose one of the three payment verification flows:
 
-1. **CAP Agent Checkout** (when `PORTAL_ALLOW_CROO_KEY=true`):
-   ```bash
-   curl -X POST http://127.0.0.1:8787/api/orders \
-     -H 'Content-Type: application/json' \
-     -d '{
-       "tier": "FULL",
-       "chain": "ethereum",
-       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-       "method": "cap",
-       "crooKey": "croo_sk_your_requester_agent_key"
-     }'
-   ```
+##### Flow A: CAP A2A Key-Sharing-Free Flow (Recommended)
+This flow coordinate with local client SDK execution and requires two consecutive HTTP requests:
 
-2. **CAP A2A Negotiation Acceptance (Key-Sharing-Free Step 1)**:
-   ```bash
-   curl -X POST http://127.0.0.1:8787/api/orders \
-     -H 'Content-Type: application/json' \
-     -d '{
-       "tier": "FULL",
-       "chain": "ethereum",
-       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-       "method": "cap",
-       "negotiationId": "your_cap_negotiation_id"
-     }'
-   ```
-   *Response (202 Accepted):*
-   ```json
-   {
-     "negotiationId": "your_cap_negotiation_id",
-     "orderId": "the_created_order_id",
-     "paid": false,
-     "payment": {
-       "method": "cap",
-       "orderId": "the_created_order_id",
-       "status": "created",
-       "priceUsdc": 2
-     }
-   }
-   ```
-   *Note: In this step, the client first negotiates locally using their own SDK key, then submits the resulting `negotiationId` to this endpoint. The server accepts it on the CAP network using the Provider's credentials and returns the created `orderId`.*
+* **Step 1: Negotiation Acceptance**
+  The client initiates negotiation locally using their SDK key to obtain a `negotiationId`, and submits it to the portal. The server accepts the negotiation using the Provider's credentials and returns the on-chain `orderId`:
+  ```bash
+  curl -X POST http://127.0.0.1:8787/api/orders \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "tier": "FULL",
+      "chain": "ethereum",
+      "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+      "method": "cap",
+      "negotiationId": "your_cap_negotiation_id"
+    }'
+  ```
+  *Response (202 Accepted):*
+  ```json
+  {
+    "negotiationId": "your_cap_negotiation_id",
+    "orderId": "the_created_order_id",
+    "paid": false,
+    "payment": {
+      "method": "cap",
+      "orderId": "the_created_order_id",
+      "status": "created",
+      "priceUsdc": 2
+    }
+  }
+  ```
 
-3. **CAP A2A Order Verification & Delivery (Key-Sharing-Free Step 2)**:
-   ```bash
-   curl -X POST http://127.0.0.1:8787/api/orders \
-     -H 'Content-Type: application/json' \
-     -d '{
-       "tier": "FULL",
-       "chain": "ethereum",
-       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-       "method": "cap",
-       "orderId": "the_created_order_id"
-     }'
-   ```
-   *Note: In this step, the client has paid the order locally using their own SDK key, then submits the `orderId` to verify payment. The server verifies the order status on CAP, runs the audit, delivers the report, and returns it in the response.*
+* **Client Local Payment (No API call)**
+  The client locally executes `payOrder(orderId)` using their own SDK key and funds.
 
-4. **MetaMask Direct Base USDC Verification**:
-   ```bash
-   curl -X POST http://127.0.0.1:8787/api/orders \
-     -H 'Content-Type: application/json' \
-     -d '{
-       "tier": "FULL",
-       "chain": "ethereum",
-       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-       "method": "metamask",
-       "payTxHash": "0x_your_base_usdc_transfer_tx_hash"
-     }'
-   ```
+* **Step 2: Order Verification & Delivery**
+  Once paid, the client submits the `orderId` to verify the payment. The server checks the status on the CAP network, runs the audit in-process, delivers the report to the CAP network, and returns the report:
+  ```bash
+  curl -X POST http://127.0.0.1:8787/api/orders \
+    -H 'Content-Type: application/json' \
+    -d '{
+      "tier": "FULL",
+      "chain": "ethereum",
+      "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+      "method": "cap",
+      "orderId": "the_created_order_id"
+    }'
+  ```
+
+##### Flow B: CAP Agent Checkout (Delegate Key)
+If `PORTAL_ALLOW_CROO_KEY=true` is enabled, the client delegates negotiation, payment, and delivery entirely to the portal by submitting their private SDK key.
+```bash
+curl -X POST http://127.0.0.1:8787/api/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tier": "FULL",
+    "chain": "ethereum",
+    "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+    "method": "cap",
+    "crooKey": "croo_sk_your_requester_agent_key"
+  }'
+```
+
+##### Flow C: MetaMask Direct Base USDC Verification
+The client transfers USDC on Base directly to the payee address via MetaMask and provides the transaction hash:
+```bash
+curl -X POST http://127.0.0.1:8787/api/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tier": "FULL",
+    "chain": "ethereum",
+    "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+    "method": "metamask",
+    "payTxHash": "0x_your_base_usdc_transfer_tx_hash"
+  }'
+```
 
 - In `PORTAL_PAYMENT_MODE=free`, payment verification failures are logged, but the server falls back to returning the local read-only report.
 - In `PORTAL_PAYMENT_MODE=paid`, payment must successfully verify (either settling the CAP order escrow or confirming the Base USDC receipt) or the API returns `402 Payment Required`.
