@@ -151,7 +151,21 @@ If the portal is configured with **`PORTAL_PAYMENT_MODE=paid`**, the request abo
      }'
    ```
 
-2. **MetaMask Direct Base USDC Verification**:
+2. **CAP A2A Order Verification (Key-Sharing-Free)**:
+   ```bash
+   curl -X POST http://127.0.0.1:8787/api/orders \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "tier": "FULL",
+       "chain": "ethereum",
+       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+       "method": "cap",
+       "orderId": "your_cap_order_id"
+     }'
+   ```
+   *Note: In this flow, the client negotiates and pays the order locally using their own SDK key, then submits the resulting `orderId` to this endpoint. The server verifies the order status on the CAP network using the Provider's credentials and delivers the audit report.*
+
+3. **MetaMask Direct Base USDC Verification**:
    ```bash
    curl -X POST http://127.0.0.1:8787/api/orders \
      -H 'Content-Type: application/json' \
