@@ -28,6 +28,7 @@ import { AuditOrchestrator } from "../orchestrator.js";
 import { getChain, type ChainKey } from "../chains.js";
 import { loadLlmConfig } from "../llm/config.js";
 import { createChatModel, AuditSkillSet } from "../llm/skills.js";
+import { type CapClient } from "../cap/provider.js";
 
 /** Injection points for {@link buildPortal} / {@link startPortal}. */
 export interface BuildPortalOptions {
@@ -36,6 +37,8 @@ export interface BuildPortalOptions {
   auditor?: LocalAuditor;
   /** Builds a Requester CAP client from a user key; defaults to the real SDK-backed factory. */
   checkoutClientFactory?: CheckoutClientFactory;
+  /** The Provider's CAP client to verify chain orders. */
+  capClient?: CapClient;
 }
 
 /**
@@ -113,6 +116,7 @@ export async function buildPortal(options: BuildPortalOptions = {}) {
     auditor,
     aiEnabled: built?.aiEnabled ?? false,
     checkoutClientFactory: options.checkoutClientFactory,
+    capClient: options.capClient,
   });
   return { config, server };
 }

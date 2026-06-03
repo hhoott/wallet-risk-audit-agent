@@ -98,6 +98,7 @@ export interface CapClient {
     serviceId: string;
     requesterWalletAddress: string;
     requirements?: string;
+    status?: string;
   }>;
   deliverOrder(id: string, req: CapDeliverRequest): Promise<unknown>;
   rejectOrder(id: string, reason: string): Promise<unknown>;
@@ -455,6 +456,11 @@ export class WalletAuditProvider {
   /** The settlement ledger holding records for delivered orders. */
   get settlementLedger(): SettlementLedger {
     return this.ledger;
+  }
+
+  /** The CAP client this Provider uses. */
+  get capClient(): CapClient {
+    return this.client;
   }
 
   /**

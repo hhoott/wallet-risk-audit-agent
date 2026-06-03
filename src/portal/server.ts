@@ -42,6 +42,8 @@ import {
   type CheckoutProgress,
 } from "./cap-checkout.js";
 import { MetaMaskPaymentVerifier, BASE_USDC_ADDRESS } from "./metamask-payment.js";
+import { DeliverableType } from "@croo-network/sdk";
+import { type CapClient, extractTxHash } from "../cap/provider.js";
 
 const TIER_ORDER: readonly Tier[] = ["QUICK", "FULL", "MULTI"];
 
@@ -220,6 +222,7 @@ function parseOrderRequest(body: unknown):
       chainKey: ChainKey;
       crooKey?: string;
       payTxHash?: string;
+      orderId?: string;
       method: "cap" | "metamask" | "none";
       stream: boolean;
     }
@@ -227,17 +230,27 @@ function parseOrderRequest(body: unknown):
   if (typeof body !== "object" || body === null) {
     return { error: "Request body must be a JSON object." };
   }
-  const { tier, walletAddress, walletAddresses, chain, crooKey, payTxHash, method, stream } =
-    body as {
-      tier?: unknown;
-      walletAddress?: unknown;
-      walletAddresses?: unknown;
-      chain?: unknown;
-      crooKey?: unknown;
-      payTxHash?: unknown;
-      method?: unknown;
-      stream?: unknown;
-    };
+  const {
+    tier,
+    walletAddress,
+    walletAddresses,
+    chain,
+    crooKey,
+    payTxHash,
+    orderId,
+    method,
+    stream,
+  } = body as {
+    tier?: unknown;
+    walletAddress?: unknown;
+    walletAddresses?: unknown;
+    chain?: unknown;
+    crooKey?: unknown;
+    payTxHash?: unknown;
+    orderId?: unknown;
+    method?: unknown;
+    stream?: unknown;
+  };
 
   if (typeof tier !== "string" || !TIER_ORDER.includes(tier as Tier)) {
     return { error: "Field 'tier' must be one of QUICK, FULL, MULTI." };
@@ -276,11 +289,13 @@ function parseOrderRequest(body: unknown):
   const key = typeof crooKey === "string" && crooKey.trim().length > 0 ? crooKey.trim() : undefined;
   const tx =
     typeof payTxHash === "string" && payTxHash.trim().length > 0 ? payTxHash.trim() : undefined;
+  const oId = typeof orderId === "string" && orderId.trim().length > 0 ? orderId.trim() : undefined;
   // Resolve the payment method: explicit field wins, else infer from which credential is present.
   let resolvedMethod: "cap" | "metamask" | "none";
   if (method === "metamask" || (method === undefined && tx !== undefined))
     resolvedMethod = "metamask";
-  else if (method === "cap" || (method === undefined && key !== undefined)) resolvedMethod = "cap";
+  else if (method === "cap" || (method === undefined && (key !== undefined || oId !== undefined)))
+    resolvedMethod = "cap";
   else resolvedMethod = "none";
 
   return {
@@ -289,6 +304,7 @@ function parseOrderRequest(body: unknown):
     chainKey,
     crooKey: key,
     payTxHash: tx,
+    orderId: oId,
     method: resolvedMethod,
     stream: stream === true,
   };
@@ -319,6 +335,8 @@ export interface PortalServerDeps {
   checkoutClientFactory?: CheckoutClientFactory;
   /** MetaMask USDC payment verifier; defaults to one built from config.payeeAddress when present. */
   paymentVerifier?: PaymentVerifier;
+  /** The CAP client used to query / deliver on-chain orders. */
+  capClient?: CapClient;
   /** Whether AI insight is active (an LLM is configured). Drives the AI tier highlights. */
   aiEnabled?: boolean;
   /** Logger; defaults to console. */
@@ -340,6 +358,7 @@ interface ServerCtx {
   auditor: LocalAuditor;
   checkoutClientFactory: CheckoutClientFactory;
   paymentVerifier: PaymentVerifier | undefined;
+  capClient: CapClient | undefined;
   aiEnabled: boolean;
   logger: NonNullable<PortalServerDeps["logger"]>;
 }
@@ -369,6 +388,7 @@ export function createPortalServer(deps: PortalServerDeps) {
     paymentVerifier: verifier,
     aiEnabled: deps.aiEnabled ?? false,
     logger: deps.logger ?? defaultLogger(),
+    capClient: deps.capClient,
   };
 
   return createServer((req, res) => {
@@ -515,6 +535,7 @@ interface OrderParams {
   addresses: string[];
   chainKey: ChainKey;
   crooKey?: string;
+  orderId?: string;
   payTxHash?: string;
   method: "cap" | "metamask" | "none";
 }
@@ -634,6 +655,118 @@ async function runOrder(
         addressIntel: local.addressIntel,
       },
     };
+  }
+
+  // ── Paid CAP order status verification (A2A flow with orderId) ────────────────────────
+  if (params.method === "cap" && params.orderId !== undefined) {
+    if (ctx.capClient === undefined) {
+      if (isFree) {
+        return localOutcome(
+          ctx,
+          params,
+          "CAP client not configured on portal; served a free local audit.",
+        );
+      }
+      return {
+        status: 503,
+        body: {
+          error: "CAP A2A verification is not configured on this portal (missing CapClient).",
+          code: "CAP_CLIENT_DISABLED",
+        },
+      };
+    }
+
+    try {
+      onProgress({ step: "paying", message: `Checking CAP order ${params.orderId} status…` });
+      const order = await ctx.capClient.getOrder(params.orderId);
+      const status = order.status || "created";
+
+      if (status !== "paid" && status !== "completed") {
+        if (isFree) {
+          return localOutcome(
+            ctx,
+            params,
+            `CAP order ${params.orderId} is unpaid (status=${status}); served a free local audit.`,
+          );
+        }
+        return {
+          status: 402,
+          body: {
+            error: `CAP order ${params.orderId} is not paid yet (status is '${status}').`,
+            code: "PAYMENT_REQUIRED",
+            payment: {
+              method: "cap",
+              orderId: params.orderId,
+              status: status,
+              priceUsdc: TIER_PRICE_USDC[params.tier],
+            },
+          },
+        };
+      }
+
+      onProgress({ step: "paid", message: `CAP order ${params.orderId} is paid; auditing…` });
+
+      const local = await ctx.auditor.audit(params.tier, params.addresses, params.chainKey);
+
+      let deliverResultTx = "";
+      if (status === "paid") {
+        onProgress({ step: "delivering", message: "Delivering audit report to CAP network…" });
+        const schemaJson = JSON.stringify(local.structured);
+        let deliverableText = local.humanReadable;
+
+        const threshold = 512 * 1024;
+        if (Buffer.byteLength(schemaJson, "utf8") > threshold) {
+          const objectKey = await ctx.capClient.uploadFile(
+            `${params.orderId}-report.json`,
+            Buffer.from(schemaJson, "utf8"),
+          );
+          deliverableText = `${deliverableText}\n\n> Full machine-readable report uploaded as object key: ${objectKey}`;
+        }
+
+        const req = {
+          deliverableType: DeliverableType.Schema,
+          deliverableSchema: schemaJson,
+          deliverableText,
+        };
+        const resDeliver = await ctx.capClient.deliverOrder(params.orderId, req);
+        deliverResultTx = extractTxHash(resDeliver);
+      }
+
+      logger.info(`CAP order ${params.orderId} successfully resolved & delivered`);
+      return {
+        status: 200,
+        body: {
+          orderId: params.orderId,
+          tier: params.tier,
+          chain: params.chainKey,
+          mode: config.paymentMode,
+          paid: true,
+          payTxHash: deliverResultTx || "0x_delivered",
+          structured: local.structured,
+          humanReadable: local.humanReadable,
+          decision: local.decision,
+          ai: local.ai,
+          addressIntel: local.addressIntel,
+        },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`CAP order check failed: ${message}`);
+      if (isFree) {
+        return localOutcome(
+          ctx,
+          params,
+          `CAP order check failed (${message}); served a free local audit.`,
+        );
+      }
+      return {
+        status: 502,
+        body: {
+          error: `Could not verify CAP order: ${message}`,
+          code: "CAP_VERIFY_FAILED",
+        },
+      };
+    }
   }
 
   // ── Paid CAP checkout path (a key was supplied) ──────────────────────────────────────

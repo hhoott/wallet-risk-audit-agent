@@ -49,7 +49,7 @@ export async function main(): Promise<void> {
     const skills = model ? new AuditSkillSet(model) : undefined;
     if (skills) console.info(`[app] AI insight enabled (model: ${llm.model}).`);
     const auditor = new OrchestratorLocalAuditor(provider.provider.auditRunner, skills);
-    portal = await startPortal({ auditor });
+    portal = await startPortal({ auditor, capClient: provider.provider.capClient });
 
     console.info("[app] Agent + Web/API are running in one process, sharing one CAP connection.");
     console.info(`[app] Open the web page: ${portal.urls.frontend}`);

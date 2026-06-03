@@ -6,6 +6,7 @@ import type { PortalConfig } from "../src/portal/config.js";
 import type { LocalAuditor, AuditEngineResult } from "../src/portal/local-auditor.js";
 import type { CheckoutCapClient } from "../src/portal/cap-checkout.js";
 import type { AuditReportStructured } from "../src/models.js";
+import type { CapClient } from "../src/cap/provider.js";
 
 const WALLET = "0x" + "a".repeat(40);
 
@@ -111,11 +112,13 @@ function startServer(
   cfg: PortalConfig,
   auditor: LocalAuditor,
   checkoutClientFactory?: CheckoutClientFactory,
+  capClient?: CapClient,
 ): Promise<{ base: string; close: () => Promise<void> }> {
   const server = createPortalServer({
     config: cfg,
     auditor,
     checkoutClientFactory,
+    capClient,
     logger: { info: () => {}, warn: () => {}, error: () => {} },
   });
   return new Promise((resolve) => {
@@ -301,6 +304,100 @@ describe("portal server — paid mode (no key)", () => {
       expect(data.payment.method).toBe("metamask");
       expect(data.payment.amountUsdc).toBe(2);
       expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
+    } finally {
+      await srv.close();
+    }
+  });
+});
+
+describe("portal server — A2A orderId verification", () => {
+  function fakeCapClient(orderStatus: "created" | "paid" | "completed") {
+    return {
+      connectWebSocket: () => Promise.resolve({ on: () => {}, close: () => {} }),
+      getNegotiation: () => Promise.resolve({ serviceId: "svc-full", requirements: "{}" }),
+      acceptNegotiation: () => Promise.resolve({}),
+      rejectNegotiation: () => Promise.resolve({}),
+      getOrder: (id: string) =>
+        Promise.resolve({
+          orderId: id,
+          serviceId: "svc-full",
+          requesterWalletAddress: "0x" + "2".repeat(40),
+          requirements: JSON.stringify({ walletAddresses: [WALLET] }),
+          status: orderStatus,
+        }),
+      deliverOrder: () => Promise.resolve({ txHash: "0xdeliver_tx" }),
+      rejectOrder: () => Promise.resolve({}),
+      uploadFile: () => Promise.resolve("object-key"),
+    };
+  }
+
+  it("paid mode: returns 402 with CAP payment details if order is unpaid (status=created)", async () => {
+    const srv = await startServer(
+      config("paid"),
+      new FakeAuditor(),
+      undefined,
+      fakeCapClient("created"),
+    );
+    try {
+      const { status, data } = await postOrder(srv.base, {
+        tier: "FULL",
+        walletAddress: WALLET,
+        method: "cap",
+        orderId: "ord-unpaid",
+      });
+      expect(status).toBe(402);
+      expect(data.code).toBe("PAYMENT_REQUIRED");
+      expect(data.payment.method).toBe("cap");
+      expect(data.payment.orderId).toBe("ord-unpaid");
+      expect(data.payment.status).toBe("created");
+      expect(data.payment.priceUsdc).toBe(2);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("paid mode: returns 200 and report if order is paid", async () => {
+    const srv = await startServer(
+      config("paid"),
+      new FakeAuditor(),
+      undefined,
+      fakeCapClient("paid"),
+    );
+    try {
+      const { status, data } = await postOrder(srv.base, {
+        tier: "FULL",
+        walletAddress: WALLET,
+        method: "cap",
+        orderId: "ord-paid",
+      });
+      expect(status).toBe(200);
+      expect(data.paid).toBe(true);
+      expect(data.orderId).toBe("ord-paid");
+      expect(data.payTxHash).toBe("0xdeliver_tx");
+      expect(data.structured.walletAddress).toBe(WALLET);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("paid mode: returns 200 and report if order is completed (already delivered)", async () => {
+    const srv = await startServer(
+      config("paid"),
+      new FakeAuditor(),
+      undefined,
+      fakeCapClient("completed"),
+    );
+    try {
+      const { status, data } = await postOrder(srv.base, {
+        tier: "FULL",
+        walletAddress: WALLET,
+        method: "cap",
+        orderId: "ord-completed",
+      });
+      expect(status).toBe(200);
+      expect(data.paid).toBe(true);
+      expect(data.orderId).toBe("ord-completed");
+      expect(data.structured.walletAddress).toBe(WALLET);
     } finally {
       await srv.close();
     }
