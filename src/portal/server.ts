@@ -222,6 +222,7 @@ function parseOrderRequest(body: unknown):
       chainKey: ChainKey;
       crooKey?: string;
       payTxHash?: string;
+      negotiationId?: string;
       orderId?: string;
       method: "cap" | "metamask" | "none";
       stream: boolean;
@@ -237,6 +238,7 @@ function parseOrderRequest(body: unknown):
     chain,
     crooKey,
     payTxHash,
+    negotiationId,
     orderId,
     method,
     stream,
@@ -247,6 +249,7 @@ function parseOrderRequest(body: unknown):
     chain?: unknown;
     crooKey?: unknown;
     payTxHash?: unknown;
+    negotiationId?: unknown;
     orderId?: unknown;
     method?: unknown;
     stream?: unknown;
@@ -289,12 +292,19 @@ function parseOrderRequest(body: unknown):
   const key = typeof crooKey === "string" && crooKey.trim().length > 0 ? crooKey.trim() : undefined;
   const tx =
     typeof payTxHash === "string" && payTxHash.trim().length > 0 ? payTxHash.trim() : undefined;
+  const nId =
+    typeof negotiationId === "string" && negotiationId.trim().length > 0
+      ? negotiationId.trim()
+      : undefined;
   const oId = typeof orderId === "string" && orderId.trim().length > 0 ? orderId.trim() : undefined;
   // Resolve the payment method: explicit field wins, else infer from which credential is present.
   let resolvedMethod: "cap" | "metamask" | "none";
   if (method === "metamask" || (method === undefined && tx !== undefined))
     resolvedMethod = "metamask";
-  else if (method === "cap" || (method === undefined && (key !== undefined || oId !== undefined)))
+  else if (
+    method === "cap" ||
+    (method === undefined && (key !== undefined || oId !== undefined || nId !== undefined))
+  )
     resolvedMethod = "cap";
   else resolvedMethod = "none";
 
@@ -304,6 +314,7 @@ function parseOrderRequest(body: unknown):
     chainKey,
     crooKey: key,
     payTxHash: tx,
+    negotiationId: nId,
     orderId: oId,
     method: resolvedMethod,
     stream: stream === true,
@@ -535,6 +546,7 @@ interface OrderParams {
   addresses: string[];
   chainKey: ChainKey;
   crooKey?: string;
+  negotiationId?: string;
   orderId?: string;
   payTxHash?: string;
   method: "cap" | "metamask" | "none";
@@ -655,6 +667,72 @@ async function runOrder(
         addressIntel: local.addressIntel,
       },
     };
+  }
+
+  // ── Paid CAP negotiation acceptance (A2A flow Step 1 with negotiationId) ──────────────
+  if (params.method === "cap" && params.negotiationId !== undefined) {
+    if (ctx.capClient === undefined) {
+      if (isFree) {
+        return localOutcome(
+          ctx,
+          params,
+          "CAP client not configured on portal; served a free local audit.",
+        );
+      }
+      return {
+        status: 503,
+        body: {
+          error: "CAP A2A verification is not configured on this portal (missing CapClient).",
+          code: "CAP_CLIENT_DISABLED",
+        },
+      };
+    }
+
+    try {
+      onProgress({
+        step: "negotiating",
+        message: `Accepting CAP negotiation ${params.negotiationId}…`,
+      });
+      const result = await ctx.capClient.acceptNegotiation(params.negotiationId);
+      const orderId = result.order.orderId;
+
+      logger.info(`CAP negotiation ${params.negotiationId} accepted. Order ID: ${orderId}`);
+
+      return {
+        status: 202,
+        body: {
+          negotiationId: params.negotiationId,
+          orderId,
+          tier: params.tier,
+          chain: params.chainKey,
+          mode: config.paymentMode,
+          paid: false,
+          payment: {
+            method: "cap",
+            orderId,
+            status: "created",
+            priceUsdc: TIER_PRICE_USDC[params.tier],
+          },
+        },
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn(`CAP negotiation acceptance failed: ${message}`);
+      if (isFree) {
+        return localOutcome(
+          ctx,
+          params,
+          `CAP negotiation acceptance failed (${message}); served a free local audit.`,
+        );
+      }
+      return {
+        status: 502,
+        body: {
+          error: `Could not accept CAP negotiation: ${message}`,
+          code: "CAP_NEGOTIATION_FAILED",
+        },
+      };
+    }
   }
 
   // ── Paid CAP order status verification (A2A flow with orderId) ────────────────────────

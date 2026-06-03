@@ -151,7 +151,7 @@ If the portal is configured with **`PORTAL_PAYMENT_MODE=paid`**, the request abo
      }'
    ```
 
-2. **CAP A2A Order Verification (Key-Sharing-Free)**:
+2. **CAP A2A Negotiation Acceptance (Key-Sharing-Free Step 1)**:
    ```bash
    curl -X POST http://127.0.0.1:8787/api/orders \
      -H 'Content-Type: application/json' \
@@ -160,12 +160,40 @@ If the portal is configured with **`PORTAL_PAYMENT_MODE=paid`**, the request abo
        "chain": "ethereum",
        "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
        "method": "cap",
-       "orderId": "your_cap_order_id"
+       "negotiationId": "your_cap_negotiation_id"
      }'
    ```
-   *Note: In this flow, the client negotiates and pays the order locally using their own SDK key, then submits the resulting `orderId` to this endpoint. The server verifies the order status on the CAP network using the Provider's credentials and delivers the audit report.*
+   *Response (202 Accepted):*
+   ```json
+   {
+     "negotiationId": "your_cap_negotiation_id",
+     "orderId": "the_created_order_id",
+     "paid": false,
+     "payment": {
+       "method": "cap",
+       "orderId": "the_created_order_id",
+       "status": "created",
+       "priceUsdc": 2
+     }
+   }
+   ```
+   *Note: In this step, the client first negotiates locally using their own SDK key, then submits the resulting `negotiationId` to this endpoint. The server accepts it on the CAP network using the Provider's credentials and returns the created `orderId`.*
 
-3. **MetaMask Direct Base USDC Verification**:
+3. **CAP A2A Order Verification & Delivery (Key-Sharing-Free Step 2)**:
+   ```bash
+   curl -X POST http://127.0.0.1:8787/api/orders \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "tier": "FULL",
+       "chain": "ethereum",
+       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+       "method": "cap",
+       "orderId": "the_created_order_id"
+     }'
+   ```
+   *Note: In this step, the client has paid the order locally using their own SDK key, then submits the `orderId` to verify payment. The server verifies the order status on CAP, runs the audit, delivers the report, and returns it in the response.*
+
+4. **MetaMask Direct Base USDC Verification**:
    ```bash
    curl -X POST http://127.0.0.1:8787/api/orders \
      -H 'Content-Type: application/json' \

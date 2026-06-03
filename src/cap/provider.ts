@@ -91,7 +91,7 @@ export interface CapDeliverRequest {
 export interface CapClient {
   connectWebSocket(): Promise<CapEventStream>;
   getNegotiation(id: string): Promise<{ serviceId: string; requirements: string }>;
-  acceptNegotiation(id: string): Promise<unknown>;
+  acceptNegotiation(id: string): Promise<{ order: { orderId: string } }>;
   rejectNegotiation(id: string, reason: string): Promise<unknown>;
   getOrder(id: string): Promise<{
     orderId: string;

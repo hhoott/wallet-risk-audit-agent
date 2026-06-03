@@ -315,7 +315,7 @@ describe("portal server — A2A orderId verification", () => {
     return {
       connectWebSocket: () => Promise.resolve({ on: () => {}, close: () => {} }),
       getNegotiation: () => Promise.resolve({ serviceId: "svc-full", requirements: "{}" }),
-      acceptNegotiation: () => Promise.resolve({}),
+      acceptNegotiation: (id: string) => Promise.resolve({ order: { orderId: "ord-" + id } }),
       rejectNegotiation: () => Promise.resolve({}),
       getOrder: (id: string) =>
         Promise.resolve({
@@ -330,6 +330,32 @@ describe("portal server — A2A orderId verification", () => {
       uploadFile: () => Promise.resolve("object-key"),
     };
   }
+
+  it("paid mode: accepts negotiation and returns 202 with orderId", async () => {
+    const srv = await startServer(
+      config("paid"),
+      new FakeAuditor(),
+      undefined,
+      fakeCapClient("created"),
+    );
+    try {
+      const { status, data } = await postOrder(srv.base, {
+        tier: "FULL",
+        walletAddress: WALLET,
+        method: "cap",
+        negotiationId: "neg-test",
+      });
+      expect(status).toBe(202);
+      expect(data.negotiationId).toBe("neg-test");
+      expect(data.orderId).toBe("ord-neg-test");
+      expect(data.paid).toBe(false);
+      expect(data.payment.method).toBe("cap");
+      expect(data.payment.status).toBe("created");
+      expect(data.payment.priceUsdc).toBe(2);
+    } finally {
+      await srv.close();
+    }
+  });
 
   it("paid mode: returns 402 with CAP payment details if order is unpaid (status=created)", async () => {
     const srv = await startServer(

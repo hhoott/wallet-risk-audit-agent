@@ -125,10 +125,10 @@ class FakeCapClient implements CapClient {
     return n;
   }
 
-  async acceptNegotiation(id: string): Promise<unknown> {
+  async acceptNegotiation(id: string): Promise<{ order: { orderId: string } }> {
     this.maybeThrow("acceptNegotiation");
     this.calls.acceptNegotiation.push(id);
-    return { ok: true };
+    return { order: { orderId: "order-1" } };
   }
 
   async rejectNegotiation(id: string, reason: string): Promise<unknown> {
