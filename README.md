@@ -115,6 +115,8 @@ Returns tier metadata, prices, availability, and configured service IDs.
 
 ### Create Audit Order
 
+When running in the default **`free` mode** (`PORTAL_PAYMENT_MODE=free`), you can run a local read-only audit without any payment credentials:
+
 ```bash
 curl -X POST http://127.0.0.1:8787/api/orders \
   -H 'Content-Type: application/json' \
@@ -132,13 +134,38 @@ Accepted values: `ethereum` (default), `base`, `arbitrum`, `optimism`, `polygon`
 display name (e.g. `8453`, `"Base"`). Omit it to audit Ethereum Mainnet. See
 [Multi-chain support](#multi-chain-support).
 
-Payment-related fields depend on the selected payment path:
+#### Paying in `paid` mode
 
-- `crooKey`: optional user-supplied CROO key for the CAP checkout path when `PORTAL_ALLOW_CROO_KEY=true`.
-- `method`: optional payment method hint — `"cap"`, `"metamask"`, or `"none"` (inferred from the credentials when omitted).
-- `payTxHash`: optional MetaMask/Base USDC transfer hash for the direct-transfer verification path.
-- In `PORTAL_PAYMENT_MODE=free`, payment failure does not block report generation.
-- In `PORTAL_PAYMENT_MODE=paid`, payment must verify or the API returns `402 Payment Required`.
+If the portal is configured with **`PORTAL_PAYMENT_MODE=paid`**, the request above without payment credentials will fail with `402 Payment Required`. You must include payment fields depending on the selected path:
+
+1. **CAP Agent Checkout** (when `PORTAL_ALLOW_CROO_KEY=true`):
+   ```bash
+   curl -X POST http://127.0.0.1:8787/api/orders \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "tier": "FULL",
+       "chain": "ethereum",
+       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+       "method": "cap",
+       "crooKey": "croo_sk_your_requester_agent_key"
+     }'
+   ```
+
+2. **MetaMask Direct Base USDC Verification**:
+   ```bash
+   curl -X POST http://127.0.0.1:8787/api/orders \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "tier": "FULL",
+       "chain": "ethereum",
+       "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
+       "method": "metamask",
+       "payTxHash": "0x_your_base_usdc_transfer_tx_hash"
+     }'
+   ```
+
+- In `PORTAL_PAYMENT_MODE=free`, payment verification failures are logged, but the server falls back to returning the local read-only report.
+- In `PORTAL_PAYMENT_MODE=paid`, payment must successfully verify (either settling the CAP order escrow or confirming the Base USDC receipt) or the API returns `402 Payment Required`.
 
 ### `POST /api/orders` response schema
 
