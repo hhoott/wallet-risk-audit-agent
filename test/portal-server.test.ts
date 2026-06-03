@@ -269,12 +269,38 @@ describe("portal server — free mode (no key)", () => {
 });
 
 describe("portal server — paid mode (no key)", () => {
-  it("refuses with 402 asking for a key", async () => {
-    const srv = await startServer(config("paid"), new FakeAuditor());
+  it("refuses with 402 returning payment details", async () => {
+    const cfg = { ...config("paid"), payeeAddress: "0x" + "1".repeat(40) };
+    const srv = await startServer(cfg, new FakeAuditor());
     try {
       const { status, data } = await postOrder(srv.base, { tier: "FULL", walletAddress: WALLET });
       expect(status).toBe(402);
       expect(data.code).toBe("PAYMENT_REQUIRED");
+      expect(data.payment).toBeTypeOf("object");
+      expect(data.payment.method).toBe("metamask");
+      expect(data.payment.amountUsdc).toBe(2);
+      expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
+      expect(data.payment.chainId).toBe(8453);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("refuses with 402 when method:metamask is requested but payTxHash is missing", async () => {
+    const cfg = { ...config("paid"), payeeAddress: "0x" + "1".repeat(40) };
+    const srv = await startServer(cfg, new FakeAuditor());
+    try {
+      const { status, data } = await postOrder(srv.base, {
+        tier: "FULL",
+        walletAddress: WALLET,
+        method: "metamask",
+      });
+      expect(status).toBe(402);
+      expect(data.code).toBe("PAYMENT_REQUIRED");
+      expect(data.payment).toBeTypeOf("object");
+      expect(data.payment.method).toBe("metamask");
+      expect(data.payment.amountUsdc).toBe(2);
+      expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
     } finally {
       await srv.close();
     }

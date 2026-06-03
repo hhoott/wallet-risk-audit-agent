@@ -565,11 +565,31 @@ async function runOrder(
       };
     }
     if (params.payTxHash === undefined) {
+      if (isFree) {
+        return localOutcome(
+          ctx,
+          params,
+          "MetaMask payments are not configured or no hash was provided; served a free local audit.",
+        );
+      }
+      const paymentDetails: Record<string, unknown> = {
+        method: "metamask",
+        amountUsdc: TIER_PRICE_USDC[params.tier],
+        tier: params.tier,
+      };
+      if (config.payeeAddress) {
+        paymentDetails.payeeAddress = config.payeeAddress;
+        paymentDetails.usdcAddress = BASE_USDC_ADDRESS;
+        paymentDetails.chainId = 8453;
+        paymentDetails.chain = "base";
+      }
       return {
-        status: 400,
+        status: 402,
         body: {
-          error: "Provide 'payTxHash' (the Base USDC payment transaction hash).",
-          code: "MISSING_TX",
+          error:
+            "Payment required: please transfer USDC on Base to the payee address and provide the transaction hash in 'payTxHash'.",
+          code: "PAYMENT_REQUIRED",
+          payment: paymentDetails,
         },
       };
     }
@@ -699,12 +719,24 @@ async function runOrder(
   if (isFree) {
     return localOutcome(ctx, params, "Free mode: served a local read-only audit (no payment).");
   }
+  const paymentDetails: Record<string, unknown> = {
+    method: "metamask",
+    amountUsdc: TIER_PRICE_USDC[params.tier],
+    tier: params.tier,
+  };
+  if (config.payeeAddress) {
+    paymentDetails.payeeAddress = config.payeeAddress;
+    paymentDetails.usdcAddress = BASE_USDC_ADDRESS;
+    paymentDetails.chainId = 8453;
+    paymentDetails.chain = "base";
+  }
   return {
     status: 402,
     body: {
       error:
         "Payment required: pay with a CROO key (crooKey) over CAP, or with MetaMask (method:'metamask' + payTxHash).",
       code: "PAYMENT_REQUIRED",
+      payment: paymentDetails,
     },
   };
 }
