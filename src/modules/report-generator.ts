@@ -218,7 +218,7 @@ export function buildStructuredReport(inputs: AuditInputs): AuditReportStructure
 export function renderHumanReadable(s: AuditReportStructured): string {
   const lines: string[] = [];
 
-  lines.push("# Wallet Risk Audit Report");
+  lines.push("# Web3 Address Intel Report");
   lines.push("");
   lines.push(`- Wallet Address: ${s.walletAddress}`);
   lines.push(`- Audited Chain: ${s.auditedChain}`);

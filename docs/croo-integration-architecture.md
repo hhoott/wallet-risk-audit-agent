@@ -1,6 +1,6 @@
 # CROO 平台集成架构说明
 
-> 本文档说明"钱包风险体检 Agent"如何使用 CROO 平台资源，以及我们的 Agent 在项目中的应用架构和核心功能。
+> 本文档说明 "Web3 Address Intel & Risk Agent" 如何使用 CROO 平台资源，以及我们的 Agent 在项目中的应用架构和核心功能。
 
 ## 目录
 
@@ -80,17 +80,15 @@
 | **Service_ID** | 每个 Service 的唯一标识符 | 配置后由平台生成，需填入环境变量 |
 | **Agent Store 展示** | 用户可在 Store 中搜索、发现我们的 Agent | 自动：Service 配置后即上架 |
 
-我们注册了 **3 个 Service**，对应三个定价档位：
+我们现在只注册 **1 个 Service**，Dashboard 配置和 schema 维护成本更低：
 
-| 档位 | Service 名称 | 价格 | SLA | 环境变量 |
-|------|-------------|------|-----|----------|
-| Quick | Wallet Quick Check-up | 0.5 USDC | 5 分钟 | `SERVICE_ID_QUICK` |
-| Full | Wallet Full Risk Report | 2 USDC | 10 分钟 | `SERVICE_ID_FULL` |
-| Multi | Multi-Wallet & History Analysis | 5 USDC | 20 分钟 | `SERVICE_ID_MULTI` |
+| Service 名称 | 价格 | SLA | 环境变量 |
+|------|------|-----|----------|
+| Web3 Address Intel Report | 0.01 USDC | 10 分钟 | `SERVICE_ID` |
 
 **代码位置**：
-- `src/services.ts`：定义三个 Service 的元数据（描述、技能标签、交付 schema）
-- `src/config.ts`：从环境变量读取 Service_ID，构建 `serviceId → Tier` 映射表
+- `src/services.ts`：定义单个 Service 的元数据（描述、技能标签、交付 schema）
+- `src/config.ts`：从环境变量读取 `SERVICE_ID`，构建 `serviceId → 默认分析深度` 映射表
 
 
 ### 1.2 CROO 平台资源总结
@@ -459,7 +457,7 @@ await provider.start();
 
 ### 3.3 三档服务的功能差异
 
-| 功能模块 | Quick (0.5 USDC) | Full (2 USDC) | Multi (5 USDC) |
+| 功能模块 | Quick (0.5 USDC) | Full (0.01 USDC) | Multi (5 USDC) |
 |---------|------------------|---------------|----------------|
 | 地址验证 | ✅ | ✅ | ✅（每个钱包） |
 | 授权扫描 | ✅ | ✅ | ✅（每个钱包） |
@@ -756,7 +754,7 @@ order_paid 事件
 ```typescript
 // 下游 Agent 的逻辑（src/examples/requester.ts）
 const negotiation = await client.negotiateOrder({
-  serviceId: SERVICE_ID_FULL,
+  serviceId: SERVICE_ID,
   requirements: JSON.stringify({ walletAddress: borrowerWallet }),
 });
 
@@ -784,7 +782,7 @@ console.log("Loan approved with standard terms");
 
 **好处**：
 - 下游 Agent 无需自己实现钱包审计逻辑
-- 通过 CAP 雇用我们，按次付费（2 USDC）
+- 通过 CAP 雇用我们，按次付费（0.01 USDC）
 - 获得结构化报告，直接用于决策
 
 
@@ -797,11 +795,9 @@ console.log("Loan approved with standard terms");
 | 变量 | 必需 | 来源 | 说明 |
 |------|------|------|------|
 | `CROO_SDK_KEY` | ✅ | 注册 Agent 时获得 | CAP SDK 鉴权 |
-| `SERVICE_ID_QUICK` | ✅ | 后台配置 Service 后获得 | Quick 档位的 Service_ID |
-| `SERVICE_ID_FULL` | ✅ | 后台配置 Service 后获得 | Full 档位的 Service_ID |
-| `SERVICE_ID_MULTI` | ✅ | 后台配置 Service 后获得 | Multi 档位的 Service_ID |
+| `SERVICE_ID` | ✅ | 后台配置 Service 后获得 | 单个 Web3 Address Intel Service_ID |
 | `ETHERSCAN_API_KEY` | ✅ | Etherscan 注册 | 链上历史数据 |
-| `ALCHEMY_RPC_URL` | 推荐 | Alchemy 注册 | viem 读取链上状态 |
+| `ETH_RPC_URL` / `BASE_RPC_URL` / `ARBITRUM_RPC_URL` / `OPTIMISM_RPC_URL` / `POLYGON_RPC_URL` | 推荐 | Alchemy / Infura / 其他 RPC | viem 按链读取地址类型、余额、合约代码等状态 |
 | `COINGECKO_API_KEY` | 可选 | CoinGecko 注册 | 提高价格 API 速率限制 |
 | `CROO_API_URL` | 可选 | — | 默认 `https://api.croo.network` |
 | `CROO_WS_URL` | 可选 | — | 默认 `wss://api.croo.network/ws` |
@@ -826,15 +822,15 @@ npm run build
 
 # 5. 启动 Provider
 npm start
-# 输出：[cap] WalletAuditProvider started; listening for CAP events
+# 输出：[cap] AddressIntelProvider started; listening for CAP events
 ```
 
 ### 8.3 日志示例
 
 ```
-[cap] WalletAuditProvider started; listening for CAP events
+[cap] AddressIntelProvider started; listening for CAP events
 [cap] Accepted negotiation neg_abc123 (tier FULL)
-[cap] Delivered order ord_xyz789 (tier FULL); recorded settlement of 2 USDC
+[cap] Delivered order ord_xyz789 (tier FULL); recorded settlement of 0.01 USDC
 [cap] order_rejected: ord_def456
 ```
 
@@ -893,7 +889,7 @@ npm test -- --coverage      # 生成覆盖率报告
 
 | 角色 | 说明 |
 |------|------|
-| **CAP Provider** | 提供钱包风险审计服务，接受 USDC 付费，交付结构化报告 |
+| **CAP Provider** | 提供多链地址智能解析与交易对手风险核验服务，接受 USDC 付费，交付结构化报告 |
 | **只读分析器** | 从 Ethereum Mainnet 读取链上数据，不发起任何交易 |
 | **A2A 服务** | 供其他 Agent 雇用，提供机器可读的审计结果 |
 | **安全顾问** | 为用户生成健康评分、风险分类、撤销建议 |
@@ -934,4 +930,4 @@ npm test -- --coverage      # 生成覆盖率报告
 
 **文档版本**：1.0  
 **最后更新**：2025-01-15  
-**维护者**：Wallet Risk Audit Agent 开发团队
+**维护者**：Web3 Address Intel & Risk Agent 开发团队

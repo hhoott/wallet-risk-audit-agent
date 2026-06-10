@@ -50,14 +50,14 @@ async function buildSkills(): Promise<AuditSkillSet | undefined> {
   const llm = loadLlmConfig();
   if (!llm.enabled) {
     console.info(
-      "[portal] AI insight: DISABLED (set LLM_API_KEY to enable LLM analysis on FULL/MULTI tiers).",
+      "[portal] AI insight: DISABLED (set LLM_API_KEY to enable LLM analysis for the service).",
     );
     return undefined;
   }
   const model = await createChatModel(llm);
   if (model) {
     console.info(
-      `[portal] AI insight: ENABLED on FULL/MULTI tiers (model=${llm.model}, endpoint=${llm.baseUrl}).`,
+      `[portal] AI insight: ENABLED for the service (model=${llm.model}, endpoint=${llm.baseUrl}).`,
     );
     return new AuditSkillSet(model);
   }

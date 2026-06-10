@@ -15,17 +15,22 @@
 /** A required/optional variable spec, with the manual step it originates from. */
 const VARS = [
   { name: "CROO_SDK_KEY", required: true, manual: "H1-1 (register the Agent; shown once)", secret: true },
-  { name: "SERVICE_ID_QUICK", required: true, manual: "H1-2 (configure the Quick Service)" },
-  { name: "SERVICE_ID_FULL", required: true, manual: "H1-2 (configure the Full Service)" },
-  { name: "SERVICE_ID_MULTI", required: true, manual: "H1-2 (configure the Multi Service)" },
+  { name: "SERVICE_ID", required: true, manual: "H1-2 (configure the single Address Intel Service)" },
   { name: "ETHERSCAN_API_KEY", required: true, manual: "H7-12 (Etherscan API key)", secret: true },
-  { name: "ALCHEMY_RPC_URL", required: false, manual: "H7-12 (viem RPC URL; falls back to a public RPC)" },
+  { name: "ETH_RPC_URL", required: false, manual: "H7-12 (Ethereum viem RPC URL; falls back to ALCHEMY_RPC_URL/public RPC)", secret: true },
+  { name: "BASE_RPC_URL", required: false, manual: "H7-12 (Base viem RPC URL; falls back to public RPC)", secret: true },
+  { name: "ARBITRUM_RPC_URL", required: false, manual: "H7-12 (Arbitrum viem RPC URL; falls back to public RPC)", secret: true },
+  { name: "OPTIMISM_RPC_URL", required: false, manual: "H7-12 (Optimism viem RPC URL; falls back to public RPC)", secret: true },
+  { name: "POLYGON_RPC_URL", required: false, manual: "H7-12 (Polygon viem RPC URL; falls back to public RPC)", secret: true },
+  { name: "ALCHEMY_RPC_URL", required: false, manual: "legacy Ethereum RPC alias; prefer ETH_RPC_URL", secret: true },
   { name: "COINGECKO_API_KEY", required: false, manual: "H7-12 (CoinGecko key; optional, raises limits)", secret: true },
   { name: "CROO_API_URL", required: false, manual: "default https://api.croo.network" },
   { name: "CROO_WS_URL", required: false, manual: "default wss://api.croo.network/ws" },
   { name: "PORTAL_PAYMENT_MODE", required: false, manual: "web/API payment gate: free (default) or paid" },
   { name: "PORTAL_ALLOW_CROO_KEY", required: false, manual: "demo only: allow a user CROO key in the web UI (default off)" },
   { name: "PORTAL_PAYEE_ADDRESS", required: false, manual: "enables the MetaMask USDC (Base) payment tab" },
+  { name: "CROO_REQUESTER_SDK_KEY", required: false, manual: "optional A2A requester demo key; keep separate from the Provider key", secret: true },
+  { name: "CROO_TARGET_SERVICE_ID", required: false, manual: "optional A2A requester target Service_ID" },
   { name: "LLM_API_KEY", required: false, manual: "optional AI insight (OpenAI-compatible); audit works without it", secret: true },
   { name: "LLM_BASE_URL", required: false, manual: "LLM endpoint base URL (e.g. https://api.deepseek.com)" },
   { name: "LLM_MODEL", required: false, manual: "LLM model name (e.g. deepseek-chat)" },
@@ -60,8 +65,8 @@ for (const spec of VARS) {
   );
 }
 
-console.log("Wallet Risk Audit Agent — preflight\n");
-console.log("Audited chain: Ethereum Mainnet (read-only). Settlement: USDC on Base via CAP.\n");
+console.log("Web3 Address Intel & Risk Agent — preflight\n");
+console.log("Audited chains: Ethereum, Base, Arbitrum, Optimism, Polygon (read-only). Settlement: USDC on Base via CAP.\n");
 console.log(lines.join("\n"));
 console.log("");
 

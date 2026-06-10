@@ -2,6 +2,7 @@
 node_modules/
 dist/
 coverage/
+result/
 
 # Secrets / local env
 .env
@@ -17,3 +18,7 @@ npm-debug.log*
 .vscode/
 .idea/
 .omx/
+
+# Generated demo media
+test-guide/hyperframes-a2a-demo/*.mp4
+test-guide/hyperframes-a2a-demo/snapshots/

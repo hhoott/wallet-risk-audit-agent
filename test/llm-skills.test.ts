@@ -5,6 +5,7 @@ import {
   explainRisks,
   remediationPlan,
   answerQuestion,
+  classifyAddressEvidence,
   type ChatModel,
 } from "../src/llm/skills.js";
 import { loadLlmConfig } from "../src/llm/config.js";
@@ -51,6 +52,53 @@ class FakeModel implements ChatModel {
     this.lastSystem = systemPrompt;
     this.lastUser = userPrompt;
     return Promise.resolve("**AI**: explanation grounded in the report.");
+  }
+}
+
+class JsonModel implements ChatModel {
+  lastUser = "";
+  complete(_systemPrompt: string, userPrompt: string): Promise<string> {
+    this.lastUser = userPrompt;
+    return Promise.resolve(JSON.stringify({
+      address: WALLET,
+      verdict: "DANGEROUS",
+      riskLevel: "CRITICAL",
+      badge: {
+        level: "DANGEROUS",
+        label: "Dangerous",
+        description: "High-risk evidence found.",
+      },
+      official: false,
+      blacklisted: true,
+      confidence: "HIGH",
+      reasons: ["Evidence log shows a high-risk approval."],
+      approvalRisks: ["Unlimited approval to unknown spender."],
+      transactionRisks: [],
+      evidenceUsed: ["auditEvidence.approvals[0]"],
+    }));
+  }
+}
+
+class UnsupportedOfficialModel implements ChatModel {
+  complete(): Promise<string> {
+    return Promise.resolve(JSON.stringify({
+      address: WALLET,
+      verdict: "OFFICIAL",
+      riskLevel: "LOW",
+      badge: {
+        level: "OFFICIAL",
+        label: "Famous wallet",
+        description: "Model memory says this is famous.",
+      },
+      official: true,
+      blacklisted: false,
+      label: "Famous wallet",
+      confidence: "HIGH",
+      reasons: ["This is a widely documented public figure address."],
+      approvalRisks: [],
+      transactionRisks: [],
+      evidenceUsed: ["model memory"],
+    }));
   }
 }
 
@@ -102,5 +150,48 @@ describe("LLM skills", () => {
     expect(await skills.explainRisks(report())).toContain("AI");
     expect(await skills.remediationPlan(report())).toContain("AI");
     expect(await skills.answerQuestion(report(), "q")).toContain("AI");
+  });
+
+  it("classifyAddressEvidence asks the model for structured badge/risk JSON", async () => {
+    const model = new JsonModel();
+    const verdict = await classifyAddressEvidence(model, {
+      address: WALLET,
+      auditEvidence: report(),
+    });
+    expect(verdict.verdict).toBe("DANGEROUS");
+    expect(verdict.badge.level).toBe("DANGEROUS");
+    expect(verdict.approvalRisks[0]).toContain("Unlimited");
+    expect(model.lastUser).toContain("Return ONLY a JSON object");
+    expect(model.lastUser).toContain("Evidence JSON");
+    expect(model.lastUser).toContain("do not merely restate a precomputed label");
+  });
+
+  it("does not apply an official EOA verdict when the evidence lacks an official source label", async () => {
+    const verdict = await classifyAddressEvidence(new UnsupportedOfficialModel(), {
+      address: WALLET,
+      addressInspection: {
+        type: "EOA",
+        facts: {
+          contractMeta: {
+            contractName: null,
+            verified: false,
+            txCount: 10000,
+            isContract: false,
+          },
+          scannerWarnings: [],
+        },
+      },
+      auditEvidence: {
+        approvals: [],
+        contractRisks: [],
+        txFindings: [],
+        healthScore: 100,
+      },
+    });
+    expect(verdict.official).toBe(false);
+    expect(verdict.verdict).toBe("LIKELY_SAFE");
+    expect(verdict.badge.level).toBe("SAFE");
+    expect(verdict.label).toBeUndefined();
+    expect(verdict.reasons[0]).toContain("lacks an explicit official-source signal");
   });
 });

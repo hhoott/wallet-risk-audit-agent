@@ -18,13 +18,16 @@ export const AUDITED_CHAIN_ID = 1 as const;
 export const SETTLEMENT_CHAIN = "Base Mainnet" as const;
 export const SETTLEMENT_CHAIN_ID = 8453 as const;
 
-/** Pricing tier enum. */
+/** Internal analysis-depth enum. Externally, the Agent now exposes one CROO Service. */
 export type Tier = "QUICK" | "FULL" | "MULTI";
 
-/** Per-tier USDC pricing (requirements 4.4–4.6). */
+/** The single externally bookable service uses the full analysis depth by default. */
+export const DEFAULT_SERVICE_TIER: Tier = "FULL";
+
+/** Per-tier USDC pricing. Only FULL is exposed externally by the single CROO service. */
 export const TIER_PRICE_USDC: Record<Tier, number> = {
   QUICK: 0.5,
-  FULL: 2,
+  FULL: 0.01,
   MULTI: 5,
 };
 
@@ -48,7 +51,7 @@ export const DATA_SOURCE_MAX_ATTEMPTS = 4; // including the first try: at most 4
  * hard-coded, never persisted, never logged.
  *
  * MANUAL(H1-1): CROO_SDK_KEY is produced when registering the Agent (shown once); inject via env.
- * MANUAL(H1-2): SERVICE_ID_QUICK/FULL/MULTI are produced after configuring Services in the Dashboard; inject via env.
+ * MANUAL(H1-2): SERVICE_ID is produced after configuring the Service in the Dashboard; inject via env.
  * MANUAL(H7-12): data/price source API keys (Alchemy/Etherscan/CoinGecko) are obtained externally; inject via env.
  */
 export interface RuntimeConfig {
@@ -60,10 +63,8 @@ export interface RuntimeConfig {
   crooSdkKey: string;
   /** Optional custom RPC (SDK settlement-side balance checks), defaults to Base mainnet. */
   rpcUrl?: string;
-  /** Service ids required to map Service_ID -> Tier (MANUAL(H1-2)). */
-  serviceIdQuick?: string;
-  serviceIdFull?: string;
-  serviceIdMulti?: string;
+  /** Single CROO Service ID produced by the Dashboard (MANUAL(H1-2)). */
+  serviceId?: string;
 }
 
 /** Thrown when a required environment variable is missing. */
@@ -87,20 +88,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     crooWsUrl: env.CROO_WS_URL ?? "wss://api.croo.network/ws",
     crooSdkKey,
     rpcUrl: env.RPC_URL,
-    serviceIdQuick: env.SERVICE_ID_QUICK,
-    serviceIdFull: env.SERVICE_ID_FULL,
-    serviceIdMulti: env.SERVICE_ID_MULTI,
+    // SERVICE_ID is the current single-service config. SERVICE_ID_FULL is accepted as a legacy
+    // fallback so old demo env files continue to start while the dashboard is migrated.
+    serviceId: env.SERVICE_ID ?? env.SERVICE_ID_FULL ?? env.SERVICE_ID_QUICK ?? env.SERVICE_ID_MULTI,
   };
 }
 
 /**
- * Build the Service_ID -> Tier map (task 15.2).
- * Only configured tiers are included; unconfigured tiers are absent from the map.
+ * Build the Service_ID -> analysis-depth map.
+ * The external CROO Agent Store now registers one Service; internally it runs at FULL depth.
  */
 export function buildServiceTierMap(config: RuntimeConfig): Map<string, Tier> {
   const map = new Map<string, Tier>();
-  if (config.serviceIdQuick) map.set(config.serviceIdQuick, "QUICK");
-  if (config.serviceIdFull) map.set(config.serviceIdFull, "FULL");
-  if (config.serviceIdMulti) map.set(config.serviceIdMulti, "MULTI");
+  if (config.serviceId) map.set(config.serviceId, DEFAULT_SERVICE_TIER);
   return map;
 }

@@ -1,4 +1,4 @@
-# 钱包风险体检 Agent 架构说明
+# Web3 Address Intel & Risk Agent 架构说明
 
 > 本文档说明我们的 Agent 在项目中的角色、调用的 CROO 平台资源、以及各模块的职责分工。
 
@@ -6,7 +6,7 @@
 
 ### 1.1 在 CAP 协议中的角色
 
-我们的钱包风险体检 Agent 在 CROO Agent Protocol (CAP) 中扮演 **Provider（服务提供方）** 角色：
+Web3 Address Intel & Risk Agent 在 CROO Agent Protocol (CAP) 中扮演 **Provider（服务提供方）** 角色：
 
 ```
 人类用户 / 其他 Agent (Requester)
@@ -43,12 +43,12 @@
 - 注册 Agent 身份（获得 Agent DID）
 - 创建 AA 钱包（用于收款）
 - 获取 API Key（SDK 鉴权凭证，`croo_sk_...`）
-- 配置 3 个 Service（Quick / Full / Multi 三档）
+- 配置 1 个 Service（Web3 Address Intel Report）
 - 设置服务元数据（描述、技能标签、价格、SLA、交付 schema）
 
 **对应代码位置**：
 - 服务元数据定义：`src/services.ts`（`SERVICE_CATALOG`）
-- 环境变量配置：`.env.example`（`SERVICE_ID_QUICK` / `SERVICE_ID_FULL` / `SERVICE_ID_MULTI`）
+- 环境变量配置：`.env.example`（`SERVICE_ID`）
 
 ### 2.2 CAP SDK（@croo-network/sdk）
 
@@ -300,14 +300,14 @@
 
 ```
 1. Requester 发起协商
-   NegotiateOrder({ serviceId: SERVICE_ID_FULL, requirements: '{"walletAddress":"0x123..."}' })
+   NegotiateOrder({ serviceId: SERVICE_ID, requirements: '{"walletAddress":"0x123..."}' })
    
 2. 我们的 Provider 收到 negotiation_created 事件
    → Payment_Gateway.decide_negotiation 校验 serviceId 和参数
    → AcceptNegotiation(negotiationId)
    
 3. Requester 付费
-   PayOrder(orderId) → 2 USDC 锁入 CAPVault Escrow
+   PayOrder(orderId) → 0.01 USDC 锁入 CAPVault Escrow
    
 4. 我们的 Provider 收到 order_paid 事件
    → orchestrator.audit("full", ["0x123..."])
@@ -353,7 +353,7 @@
    RejectOrder(orderId, "All data sources unavailable, cannot complete audit")
    
 8. CAPVault 退款
-   Escrow → 原路退还 Requester（2 USDC）
+   Escrow → 原路退还 Requester（0.01 USDC）
 ```
 
 ## 5. 关键设计原则
@@ -395,7 +395,7 @@
 
 ## 7. 总结
 
-我们的钱包风险体检 Agent 是一个**只读链上数据分析服务**，通过 CROO Agent Protocol (CAP) 提供按次付费的钱包安全审计。
+Web3 Address Intel & Risk Agent 是一个**只读多链地址智能解析与交易对手风险核验服务**，通过 CROO Agent Protocol (CAP) 提供按次付费的地址风险报告。
 
 **调用的 CROO 资源**：
 - CROO Agent Store（服务注册与发现）

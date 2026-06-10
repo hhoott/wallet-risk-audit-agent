@@ -2,7 +2,7 @@
  * Example Requester Agent — A2A composability demo (task 19.1, requirements 5.1 / 5.2 / 5.4).
  *
  * This module demonstrates the OTHER side of the CAP exchange: an arbitrary Agent that *hires* our
- * wallet-risk-audit Agent (the Provider) through the CROO Agent Protocol, then consumes the
+ * Web3 Address Intel Agent (the Provider) through the CROO Agent Protocol, then consumes the
  * structured deliverable's `Risk_Level` / `Health_Score` to make a downstream decision (e.g. proceed
  * with or abort some action that depends on the audited wallet being safe).
  *
@@ -214,6 +214,12 @@ export function parseDelivery(
   return parsed as AuditReportStructured;
 }
 
+/** Extract the optional human-clickable report page URL delivered by the Provider. */
+export function extractResultPageUrl(parsed: AuditReportStructured | MultiWalletReport): string | undefined {
+  const value = (parsed as unknown as Record<string, unknown>).resultPageUrl;
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
 /** Decide from a parsed delivery, dispatching on single vs multi-wallet report. */
 export function decideFromDelivery(
   parsed: AuditReportStructured | MultiWalletReport,
@@ -226,9 +232,9 @@ export function decideFromDelivery(
 
 /** Parameters for {@link hireAuditAgent}. */
 export interface HireAuditAgentParams {
-  /** The target Service_ID of our wallet-risk-audit Agent (one of its QUICK/FULL/MULTI tiers). */
+  /** The target Service_ID of our Address Intel Agent. */
   serviceId: string;
-  /** The wallet address(es) to audit; passed through the negotiation `requirements` JSON. */
+  /** The address target(s) to inspect; passed through the negotiation `requirements` JSON. */
   walletAddresses: string[];
   /**
    * The order id to pay/fetch. In a real run this arrives via the `order_created` WS event after
@@ -244,11 +250,11 @@ export interface HireAuditAgentParams {
 }
 
 /**
- * Hire our wallet-risk-audit Agent over CAP and turn the structured deliverable into a decision
+ * Hire our Web3 Address Intel Agent over CAP and turn the structured deliverable into a decision
  * (task 19.1, requirements 5.1 / 5.2 / 5.4).
  *
  * Steps:
- *   1. `negotiateOrder` for `serviceId`, passing the wallet addresses in the `requirements` JSON.
+ *   1. `negotiateOrder` for `serviceId`, passing the address targets in the `requirements` JSON.
  *   2. Resolve the `orderId` (from `params.orderId` or the injected `waitForOrderId` resolver).
  *   3. `payOrder(orderId)` to lock USDC into CAPVault escrow.
  *   4. `getDelivery(orderId)` and parse `deliverableSchema` into the structured report.
@@ -295,28 +301,30 @@ async function resolveOrderId(
 // ── Entry point (real SDK wiring lives ONLY here) ────────────────────────────────────────
 
 /**
- * Runnable entry point: build a real CAP client and hire the audit Agent for a wallet read from the
+ * Runnable entry point: build a real CAP client and hire the Address Intel Agent for an address read from the
  * environment / argv, then print the decision. The SDK is imported lazily so importing this module
  * (e.g. from tests) never pulls in the network client.
  *
  * Configuration (injected via env; never hard-coded):
- *   - MANUAL(H1-1): CROO_SDK_KEY — produced when registering the Requester Agent.
- *   - CROO_TARGET_SERVICE_ID — the target Service_ID of our audit Agent to hire.
+ *   - MANUAL(H1-1): CROO_REQUESTER_SDK_KEY — produced when registering the Requester Agent.
+ *     Falls back to CROO_SDK_KEY for backward compatibility.
+ *   - CROO_TARGET_SERVICE_ID — the target Service_ID of our Address Intel Agent to hire.
  *   - CROO_TARGET_ORDER_ID — the created order id (from the order_created event in a real run).
- *   - wallet to audit — first CLI argument, else CROO_AUDIT_WALLET.
+ *   - address target to inspect — first CLI argument, else CROO_AUDIT_WALLET.
  */
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const config = loadConfig();
+  const requesterKey = process.env.CROO_REQUESTER_SDK_KEY ?? config.crooSdkKey;
   const serviceId = process.env.CROO_TARGET_SERVICE_ID;
   const orderId = process.env.CROO_TARGET_ORDER_ID;
   const wallet = argv[0] ?? process.env.CROO_AUDIT_WALLET;
 
   if (serviceId === undefined || serviceId.trim().length === 0) {
-    throw new Error("Set CROO_TARGET_SERVICE_ID to the Service_ID of the audit Agent to hire.");
+    throw new Error("Set CROO_TARGET_SERVICE_ID to the Service_ID of the Address Intel Agent to hire.");
   }
   if (wallet === undefined || wallet.trim().length === 0) {
     throw new Error(
-      "Provide a wallet to audit as the first CLI argument or via CROO_AUDIT_WALLET.",
+      "Provide an address target to inspect as the first CLI argument or via CROO_AUDIT_WALLET.",
     );
   }
   if (orderId === undefined || orderId.trim().length === 0) {
@@ -329,7 +337,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   const { AgentClient } = await import("@croo-network/sdk");
   const client = new AgentClient(
     { baseURL: config.crooApiUrl, wsURL: config.crooWsUrl, rpcURL: config.rpcUrl },
-    config.crooSdkKey,
+    requesterKey,
   ) as unknown as RequesterCapClient;
 
   const decision = await hireAuditAgent(client, {

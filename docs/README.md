@@ -1,6 +1,6 @@
 # Documentation index
 
-Reference and design documents for the Wallet Risk Audit Agent. The project-level overview lives
+Reference and design documents for the Web3 Address Intel & Risk Agent. The project-level overview lives
 in the repository [`README.md`](../README.md).
 
 > Note: the spec/reference documents in this folder are written in Chinese; the shippable source

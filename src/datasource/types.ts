@@ -63,6 +63,8 @@ export interface RawBalance {
 /** Contract metadata (used for risk classification). */
 export interface ContractMeta {
   contract: Address;
+  /** Explorer-reported contract name when available. */
+  name?: string | null;
   /** Whether source is verified / open on a block explorer. */
   verified: boolean;
   /** Deployment time UTC ISO-8601; null when unknown. */

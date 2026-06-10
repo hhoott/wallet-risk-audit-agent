@@ -1,6 +1,5 @@
-// Standalone result page. Reads the most recent order result stashed in sessionStorage by app.js
-// and renders it with the shared report renderer. If there is nothing to show (e.g. the page was
-// opened directly), it shows an empty state linking back to the order form.
+// Standalone result page. With ?file=<name>.json it fetches a Provider-written result JSON from
+// /result/. Without that parameter it falls back to the web app's sessionStorage handoff.
 
 import { renderReportInto } from "./report-render.js";
 
@@ -15,7 +14,22 @@ function headerSummary(data) {
   return `Read-only · ${chain}${tier}${paid}`;
 }
 
-function boot() {
+async function loadFromResultFile(fileName) {
+  const res = await fetch(`/result/${encodeURIComponent(fileName)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+function loadFromSessionStorage() {
+  try {
+    const raw = sessionStorage.getItem(KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function boot() {
   const container = document.getElementById("report");
   const empty = document.getElementById("empty");
   const sub = document.getElementById("report-sub");
@@ -24,11 +38,15 @@ function boot() {
   if (printBtn) printBtn.addEventListener("click", () => window.print());
 
   let data = null;
-  try {
-    const raw = sessionStorage.getItem(KEY);
-    if (raw) data = JSON.parse(raw);
-  } catch {
-    data = null;
+  const fileName = new URLSearchParams(window.location.search).get("file");
+  if (fileName) {
+    try {
+      data = await loadFromResultFile(fileName);
+    } catch {
+      data = null;
+    }
+  } else {
+    data = loadFromSessionStorage();
   }
 
   if (!data || !data.structured) {
@@ -41,4 +59,4 @@ function boot() {
   renderReportInto(container, data);
 }
 
-boot();
+void boot();

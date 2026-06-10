@@ -46,9 +46,7 @@ function testConfig(): RuntimeConfig {
     crooApiUrl: "https://example.invalid",
     crooWsUrl: "wss://example.invalid/ws",
     crooSdkKey: "test-sdk-key",
-    serviceIdQuick: "svc-quick",
-    serviceIdFull: "svc-full",
-    serviceIdMulti: "svc-multi",
+    serviceId: "svc-address-intel",
   };
 }
 
@@ -237,20 +235,20 @@ describe("E2E — full CAP Provider flow over mock data + fake client", () => {
     const client = new FakeCapClient({
       negotiations: {
         "neg-full": {
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requirements: JSON.stringify({ walletAddress: RISKY_WALLET }),
         },
       },
       orders: {
         "order-full": {
           orderId: "order-full",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: RISKY_WALLET }),
         },
         "order-nowallet": {
           orderId: "order-nowallet",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ note: "no wallet here" }),
         },
@@ -298,12 +296,12 @@ describe("E2E — full CAP Provider flow over mock data + fake client", () => {
     expect(Array.isArray(report.revokeAdvice)).toBe(true);
     expect(report.revokeAdvice.length).toBeGreaterThan(0);
 
-    // Settlement recorded against the payer with the FULL tier amount (2 USDC).
+    // Settlement recorded against the payer with the FULL tier amount.
     const settlement = provider.settlementLedger.get("order-full");
     expect(settlement).toBeDefined();
     expect(settlement!.tier).toBe("FULL");
     expect(settlement!.payerAddress).toBe(PAYER);
-    expect(settlement!.amountUsdc).toBe(2);
+    expect(settlement!.amountUsdc).toBe(0.01);
 
     // 4. A second paid order whose requirements carry no wallet → rejectOrder (refund), no delivery.
     const noWalletResult = await provider.onOrderPaid({
@@ -329,7 +327,7 @@ describe("E2E — regression assertions (clean vs. risky wallet)", () => {
       orders: {
         [orderId]: {
           orderId,
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: wallet }),
         },

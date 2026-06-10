@@ -1,6 +1,6 @@
 # Test Suite
 
-This directory contains the full test suite for the Wallet Risk Audit Agent, powered by **Vitest**. The project maintains high test coverage through a mixture of unit tests, E2E integrations, and property-based testing.
+This directory contains the full test suite for the Web3 Address Intel & Risk Agent, powered by **Vitest**. The project maintains high test coverage through a mixture of unit tests, E2E integrations, and property-based testing.
 
 ## Running Tests
 

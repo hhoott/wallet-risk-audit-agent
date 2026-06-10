@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AddressInfo } from "node:net";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { createPortalServer, type CheckoutClientFactory } from "../src/portal/server.js";
 import type { PortalConfig } from "../src/portal/config.js";
@@ -15,7 +18,7 @@ function config(mode: "free" | "paid", withServiceIds = true, allowCrooKey = fal
     port: 0,
     crooApiUrl: "https://api.test",
     crooWsUrl: "wss://api.test/ws",
-    serviceIds: withServiceIds ? { QUICK: "svc-quick", FULL: "svc-full", MULTI: "svc-multi" } : {},
+    serviceIds: withServiceIds ? { FULL: "svc-address-intel" } : {},
     orderTimeoutMs: 5000,
     paymentMode: mode,
     allowCrooKey,
@@ -157,19 +160,51 @@ describe("portal server — static + tiers", () => {
     expect(await res.json()).toEqual({ status: "ok" });
   });
 
-  it("GET /api/tiers lists tiers + payment mode", async () => {
+  it("GET /api/tiers lists the single service + payment mode", async () => {
     const res = await fetch(`${srv.base}/api/tiers`);
     const data = await res.json();
     expect(data.paymentMode).toBe("free");
-    const byTier = Object.fromEntries(data.tiers.map((t: { tier: string }) => [t.tier, t]));
-    expect(byTier.QUICK.available).toBe(true);
-    expect(byTier.QUICK.priceUsdc).toBe(0.5);
+    expect(data.tiers).toHaveLength(1);
+    expect(data.tiers[0].tier).toBe("FULL");
+    expect(data.tiers[0].available).toBe(true);
+    expect(data.tiers[0].priceUsdc).toBe(0.01);
   });
 
   it("GET / serves the HTML shell", async () => {
     const res = await fetch(`${srv.base}/`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("On-chain Risk Audit");
+    expect(await res.text()).toContain("Web3 Address Intel");
+  });
+
+  it("GET /result/:file serves a saved report JSON from the result directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "croo-result-"));
+    const server = createPortalServer({
+      config: config("free"),
+      auditor: new FakeAuditor(),
+      resultStore: { dir },
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+    try {
+      await writeFile(join(dir, "order-1.json"), JSON.stringify({ orderId: "order-1" }), "utf8");
+      const started = await new Promise<{ base: string; close: () => Promise<void> }>((resolve) => {
+        server.listen(0, () => {
+          const { port } = server.address() as AddressInfo;
+          resolve({
+            base: `http://127.0.0.1:${port}`,
+            close: () => new Promise<void>((r) => server.close(() => r())),
+          });
+        });
+      });
+      try {
+        const res = await fetch(`${started.base}/result/order-1.json`);
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ orderId: "order-1" });
+      } finally {
+        await started.close();
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it("404 for unknown paths", async () => {
@@ -188,7 +223,7 @@ describe("portal server — validation", () => {
     }
   });
 
-  it("rejects an unknown tier with 400", async () => {
+  it("rejects an explicit unknown tier with 400", async () => {
     const srv = await startServer(config("free"), new FakeAuditor());
     try {
       const { status } = await postOrder(srv.base, { tier: "NOPE", walletAddress: WALLET });
@@ -229,7 +264,7 @@ describe("portal server — tier highlights / AI gating", () => {
     const full = data.tiers.find((t: { tier: string }) => t.tier === "FULL");
     expect(full.highlights.some((h: string) => h.startsWith("AI "))).toBe(false);
     // Real, always-on capabilities are still advertised.
-    expect(full.highlights.some((h: string) => h.includes("Annotated transaction history"))).toBe(
+    expect(full.highlights.some((h: string) => h.includes("Annotated transaction counterparties"))).toBe(
       true,
     );
   });
@@ -239,20 +274,17 @@ describe("portal server — tier highlights / AI gating", () => {
     expect(data.aiEnabled).toBe(true);
     const full = data.tiers.find((t: { tier: string }) => t.tier === "FULL");
     expect(full.highlights.some((h: string) => h.includes("AI risk explanation"))).toBe(true);
-    const multi = data.tiers.find((t: { tier: string }) => t.tier === "MULTI");
-    expect(multi.highlights.some((h: string) => h.includes("counterparty"))).toBe(true);
   });
 
-  it("QUICK never advertises AI, history, or asset distribution", async () => {
+  it("the single service advertises full address intelligence capabilities", async () => {
     const data = await tiersWithAi(true);
-    const quick = data.tiers.find((t: { tier: string }) => t.tier === "QUICK");
-    const joined = quick.highlights.join(" ").toLowerCase();
-    expect(quick.highlights.some((h: string) => h.startsWith("AI "))).toBe(false);
-    expect(joined).not.toContain("transaction history");
-    expect(joined).not.toContain("asset distribution");
-    // QUICK's real value-adds.
+    const service = data.tiers[0];
+    const joined = service.highlights.join(" ").toLowerCase();
+    expect(service.tier).toBe("FULL");
     expect(joined).toContain("address type");
     expect(joined).toContain("health score");
+    expect(joined).toContain("asset distribution");
+    expect(joined).toContain("counterparties");
   });
 });
 
@@ -281,7 +313,7 @@ describe("portal server — paid mode (no key)", () => {
       expect(data.code).toBe("PAYMENT_REQUIRED");
       expect(data.payment).toBeTypeOf("object");
       expect(data.payment.method).toBe("metamask");
-      expect(data.payment.amountUsdc).toBe(2);
+      expect(data.payment.amountUsdc).toBe(0.01);
       expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
       expect(data.payment.chainId).toBe(8453);
     } finally {
@@ -302,7 +334,7 @@ describe("portal server — paid mode (no key)", () => {
       expect(data.code).toBe("PAYMENT_REQUIRED");
       expect(data.payment).toBeTypeOf("object");
       expect(data.payment.method).toBe("metamask");
-      expect(data.payment.amountUsdc).toBe(2);
+      expect(data.payment.amountUsdc).toBe(0.01);
       expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
     } finally {
       await srv.close();
@@ -314,13 +346,13 @@ describe("portal server — A2A orderId verification", () => {
   function fakeCapClient(orderStatus: "created" | "paid" | "completed") {
     return {
       connectWebSocket: () => Promise.resolve({ on: () => {}, close: () => {} }),
-      getNegotiation: () => Promise.resolve({ serviceId: "svc-full", requirements: "{}" }),
+      getNegotiation: () => Promise.resolve({ serviceId: "svc-address-intel", requirements: "{}" }),
       acceptNegotiation: (id: string) => Promise.resolve({ order: { orderId: "ord-" + id } }),
       rejectNegotiation: () => Promise.resolve({}),
       getOrder: (id: string) =>
         Promise.resolve({
           orderId: id,
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: "0x" + "2".repeat(40),
           requirements: JSON.stringify({ walletAddresses: [WALLET] }),
           status: orderStatus,
@@ -351,7 +383,7 @@ describe("portal server — A2A orderId verification", () => {
       expect(data.paid).toBe(false);
       expect(data.payment.method).toBe("cap");
       expect(data.payment.status).toBe("created");
-      expect(data.payment.priceUsdc).toBe(2);
+      expect(data.payment.priceUsdc).toBe(0.01);
     } finally {
       await srv.close();
     }
@@ -376,7 +408,7 @@ describe("portal server — A2A orderId verification", () => {
       expect(data.payment.method).toBe("cap");
       expect(data.payment.orderId).toBe("ord-unpaid");
       expect(data.payment.status).toBe("created");
-      expect(data.payment.priceUsdc).toBe(2);
+      expect(data.payment.priceUsdc).toBe(0.01);
     } finally {
       await srv.close();
     }
@@ -571,7 +603,7 @@ describe("portal server — MetaMask payment", () => {
       verify: (txHash: string) =>
         Promise.resolve(
           txHash === goodHash
-            ? { paid: true, reason: "ok", amountUsdc: 2 }
+            ? { paid: true, reason: "ok", amountUsdc: 0.01 }
             : { paid: false, reason: "Insufficient USDC to our address." },
         ),
     };

@@ -6,6 +6,7 @@ import {
   decideFromReport,
   decideFromReports,
   parseDelivery,
+  extractResultPageUrl,
   DeliveryParseError,
   isBlockingRiskLevel,
   HEALTH_SCORE_THRESHOLD,
@@ -252,9 +253,13 @@ describe("decideFromReports — multi-wallet aggregation", () => {
 
 describe("parseDelivery", () => {
   it("parses a single structured report", () => {
-    const structured = makeStructured("MEDIUM", 70);
+    const structured = {
+      ...makeStructured("MEDIUM", 70),
+      resultPageUrl: "https://intel.say2agent.com/report?file=order-1.json",
+    };
     const parsed = parseDelivery({ deliverableSchema: JSON.stringify(structured) });
     expect((parsed as AuditReportStructured).walletAddress).toBe(WALLET);
+    expect(extractResultPageUrl(parsed)).toBe("https://intel.say2agent.com/report?file=order-1.json");
   });
 
   it("parses a multi-wallet report", () => {

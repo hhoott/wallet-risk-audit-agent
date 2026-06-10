@@ -6,26 +6,34 @@ The Provider side of this project sells wallet risk audits. The requester exampl
 
 ## Important Command Name
 
-The npm script is:
+The full live demo npm script is:
 
 ```bash
-npm run requester
+npm run requester:live
+```
+
+The offline replay script is:
+
+```bash
+npm run requester:dry-run
 ```
 
 There is no `npm run require` script in the current `package.json`.
 
 ## What The Example Demonstrates
 
-`src/examples/requester.ts` uses the minimal CAP Requester flow:
+`src/examples/run-live-a2a.ts` runs the full CAP Requester flow:
 
 1. `negotiateOrder({ serviceId, requirements })`
-2. wait for or provide the created `orderId`
+2. poll requester orders until the Provider-created order is `created`
 3. `payOrder(orderId)`
-4. `getDelivery(orderId)`
-5. parse `deliverableSchema`
-6. gate a downstream decision with `riskLevelSummary`, `healthScore`, and optionally `addressStanding.badge`
+4. wait until the order is `completed`
+5. `getDelivery(orderId)`
+6. parse `deliverableSchema`
+7. print the result-page URL delivered by the Provider
+8. save/replay the same successful exchange through `result/<orderId>.json`
 
-The current runnable CLI keeps event handling intentionally small: it expects the created order ID in `CROO_TARGET_ORDER_ID`. In a full requester agent, that value would normally come from the `order_created` WebSocket event or from polling `listOrders` for the negotiation.
+`src/examples/requester.ts` still contains the lower-level pure decision helpers and minimal requester flow used by tests.
 
 ## Build First
 
@@ -43,10 +51,10 @@ dist/examples/requester.js
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `CROO_SDK_KEY` | Yes | API key for the Requester Agent that will hire the audit Provider. Its AA wallet must be funded for live payment. |
-| `CROO_TARGET_SERVICE_ID` | Yes | The target audit Provider's CAP Service ID. Use one of the Provider's `SERVICE_ID_QUICK`, `SERVICE_ID_FULL`, or `SERVICE_ID_MULTI`. |
-| `CROO_TARGET_ORDER_ID` | Yes for this CLI | The order ID created after the Provider accepts the negotiation. |
+| `CROO_REQUESTER_SDK_KEY` | Yes | API key for the Requester Agent that will hire the audit Provider. Its AA wallet must be funded for live payment. Falls back to `CROO_SDK_KEY` for old env files. |
+| `CROO_TARGET_SERVICE_ID` | Yes | The target audit Provider's CAP Service ID. Use the Provider's single `SERVICE_ID`. |
 | `CROO_AUDIT_WALLET` | If no CLI arg | Wallet address to audit. A CLI argument takes priority. |
+| `RESULT_BASE_URL` | No | Public result URL base. Defaults to `https://intel.say2agent.com`. |
 | `CROO_API_URL` | No | CAP API base URL. Defaults to `https://api.croo.network`. |
 | `CROO_WS_URL` | No | CAP WebSocket URL. Defaults to `wss://api.croo.network/ws`. |
 | `RPC_URL` | No | Base settlement RPC override for the CROO SDK. |
@@ -54,27 +62,46 @@ dist/examples/requester.js
 ## Run
 
 ```bash
-export CROO_SDK_KEY="croo_sk_requester_agent_key"
+export CROO_REQUESTER_SDK_KEY="croo_sk_requester_agent_key"
 export CROO_TARGET_SERVICE_ID="svc_target_audit_service"
-export CROO_TARGET_ORDER_ID="order_created_after_acceptance"
 
-npm run requester -- 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+npm run requester:live -- 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
 Or provide the wallet through the environment:
 
 ```bash
 export CROO_AUDIT_WALLET="0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-npm run requester
+npm run requester:live
 ```
 
 Expected success output:
 
 ```text
-[requester] decision: proceed=true ...
+==================== REPORT URL ====================
+https://intel.say2agent.com/report?file=<orderId>.json
+====================================================
 ```
 
-If the wallet is too risky, the example prints `proceed=false` with the blocking reason.
+The Provider writes the full report JSON to `result/<orderId>.json` before delivery and updates it after delivery succeeds. The delivered schema includes `resultPageUrl` and `resultJsonUrl`. When LLM is enabled, the saved JSON also includes `addressIntel[].evidenceLog` and `addressIntel[].aiVerdict` so the official/risk badge can be reviewed against the facts the model used.
+Runtime logs are kept in `result/provider.log` and `result/requester-live-*.log`.
+
+## Dry Run Replay
+
+After one successful live run, replay the saved communication flow offline:
+
+```bash
+npm run requester:dry-run
+```
+
+Replay a specific file:
+
+```bash
+npm run requester:dry-run -- --result-file <orderId>.json
+```
+
+This dry run does not connect to CROO, does not pay, and does not consume the Requester wallet balance. It prints simulated negotiation/payment/delivery logs, the saved structured JSON, and the same report URL for video rehearsal.
+Dry-run logs are written as `result/requester-dry-run-*.log`.
 
 ## Decision Policy
 
@@ -91,13 +118,14 @@ Otherwise it proceeds. This logic is implemented in:
 
 These functions are pure and can be reused by another requester agent without the CLI wrapper.
 
-The delivered JSON also includes `addressStanding` when the Provider can verify the audited
-address's standing. Use `addressStanding.badge.level` for UI or policy labels:
+The delivered JSON also includes `addressStanding` for the audited address. With LLM enabled, the
+Provider applies this field from the evidence-log classification. Use `addressStanding.badge.level`
+for UI or policy labels:
 
 | Badge level | Meaning |
 | --- | --- |
-| `OFFICIAL` | Curated official / known-good address. |
-| `SAFE` | No deterministic risk signals found. |
+| `OFFICIAL` | Evidence supports an official protocol/service address. |
+| `SAFE` | No material risk signals found in the available evidence. |
 | `CAUTION` | Suspicious or incomplete signals need review. |
 | `DANGEROUS` | Blacklisted or high-risk signals found. |
 | `UNKNOWN` | Not enough data for a confident claim. |
@@ -110,7 +138,7 @@ The reusable `hireAuditAgent` function accepts:
 walletAddresses: string[]
 ```
 
-The CLI demo sends one wallet address because it is optimized for a short competition demo. The parser and decision layer also support a `MultiWalletReport` delivery.
+The CLI demo sends one address target because it is optimized for a short competition demo. The parser and decision layer also support a `MultiWalletReport` delivery.
 
 ## How To Use In Another Agent
 

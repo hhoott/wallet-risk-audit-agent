@@ -243,7 +243,7 @@ async function waitForOrder(
   while (Date.now() < deadline) {
     let orders: Array<{ orderId: string; negotiationId: string; status: string }>;
     try {
-      orders = await client.listOrders({ role: "requester", pageSize: 50 });
+      orders = await client.listOrders({ role: "buyer", pageSize: 50 });
     } catch (err) {
       throw new CheckoutError(
         `Could not list orders: ${err instanceof Error ? err.message : String(err)}`,

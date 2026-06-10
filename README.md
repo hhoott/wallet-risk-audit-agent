@@ -1,29 +1,204 @@
-# Wallet Risk Audit Agent
+# CROO Web3 Address Intel & Risk Agent
 
-Read-only Ethereum wallet risk analysis agent for the CROO Agent Protocol (CAP). It can be hired by other agents over A2A, called as a local HTTP API, or used through the bundled web UI.
+Evidence-based Web3 counterparty risk intelligence for the CROO Agent Protocol.
 
-## Current Fact
+This agent answers one practical question before a user or another agent sends a transaction:
 
-This project currently exposes the same wallet-risk audit engine in three ways:
+> Is this wallet, contract, token, router, bridge, or counterparty address safe, official, suspicious, or risky?
 
-| Mode | What it is | Main entry |
+It collects read-only evidence from Etherscan and RPC providers, asks an LLM to classify that evidence, writes the result back into the final JSON, and returns a shareable report page.
+
+## Competition Summary
+
+The project exposes the same address intelligence engine through three product surfaces:
+
+| Surface | Who uses it | What happens |
 | --- | --- | --- |
-| A2A / CAP Provider | Other agents hire this agent through CROO CAP, pay USDC on Base, and receive a CAP delivery. | `npm start` or `npm run provider` |
-| HTTP API | Local JSON/SSE endpoints for orders, tier discovery, and address vetting. | `npm start`, then `POST /api/orders` |
-| Web UI | Browser wizard for audits, payment/demo flow, and report rendering. | `npm start`, then open the printed URL |
+| **A2A / CROO CAP** | Other agents | A requester hires this Provider, pays the CROO service, and receives a CAP delivery with JSON, Markdown, and a report URL. |
+| **HTTP API** | Apps, bots, backend services | A client posts one or more addresses to `/api/orders` and receives structured risk intelligence. |
+| **Web UI + Report Page** | Human users and judges | A browser flow displays the final badge, reasons, evidence, and recommended action. |
 
-`npm start` is the default competition/demo path: it starts the CAP Provider and the Web/API server in one process, using one CAP identity and one CAP WebSocket. `npm run portal` starts only the Web/API server.
+Recommended review path:
 
-## What It Does
+1. Watch the feature demo video: `test-guide/hyperframes-a2a-demo/croo-address-intel-feature-demo.mp4`
+2. Inspect the three saved report URLs below.
+3. Review the A2A flow in `src/examples/run-live-a2a.ts` and `src/cap/provider.ts`.
+4. Run `npm run build` and the target tests listed in [Verification](#verification).
 
-- Validates Ethereum-format wallet and contract addresses.
-- Reads public on-chain data across multiple EVM chains (Ethereum, Base, Arbitrum, Optimism, Polygon); it never asks for private keys and never sends transactions for the audit itself.
-- Analyzes balances, token holdings, approvals, contract interactions, high-risk counterparties, failed transactions, and recent activity.
-- Produces both a human-readable Markdown report and a structured JSON deliverable.
-- Marks the audited address with deterministic standing: official verification, risk verdict, and a display badge.
-- Supports three service tiers: `QUICK` (0.5 USDC), `FULL` (2 USDC), and `MULTI` (5 USDC).
-- Adds optional LangChain/OpenAI-compatible LLM analysis when `LLM_API_KEY` is configured.
-- Supports web payment gating through demo/free mode, CAP checkout with a user-supplied CROO key, or MetaMask USDC transfer verification on Base.
+## Demo Results
+
+These are real successful A2A runs saved during the competition demo.
+
+| Case | Address | Result | Why it matters |
+| --- | --- | --- | --- |
+| Official contract | `0xE592427A0AEce92De3Edee1F18E0157C05861564` | `OFFICIAL` / `LOW` | The evidence log supports the official badge through contract code, verified source, canonical `SwapRouter` metadata, and long transaction history. |
+| Normal high-activity EOA | `0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045` | `LIKELY_SAFE` / `LOW` | The wallet can be low risk without being marked official; the LLM output is evidence-gated so public fame or model memory is not enough. |
+| Caution contract | `0xD90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b` | `CAUTION` / `MEDIUM` | The report highlights mixer-adjacent context and transaction-risk evidence without inventing an unsupported blacklist claim. |
+
+Report pages:
+
+```text
+https://intel.say2agent.com/report?file=e149b86a-ca7d-447f-8763-25a9795b7f63.json
+https://intel.say2agent.com/report?file=02528134-5c63-4dc9-8110-938fa59568c6.json
+https://intel.say2agent.com/report?file=ce3ce2c9-f62d-44cf-904a-baa066933aea.json
+```
+
+Local demo evidence is documented in [test-guide/a2a-demo-runs-2026-06-10.md](test-guide/a2a-demo-runs-2026-06-10.md).
+
+## What The Agent Delivers
+
+For each submitted address, the agent returns:
+
+- Address type: EOA, contract, ERC-20, ERC-721, ERC-1155, or unknown.
+- Official / safe / caution / dangerous / unknown badge.
+- Risk level: low, medium, high, or critical.
+- Contract metadata: source verification, contract name, deployment facts, code presence.
+- Approval and spender risk checks.
+- Transaction and counterparty evidence.
+- Blacklist / warning hints when the evidence supports them.
+- LLM evidence verdict with cited fields, reasons, authorization risks, and transaction risks.
+- Human-readable Markdown and machine-readable JSON.
+- A report page URL that can be opened by a human reviewer.
+
+The CROO-facing product is intentionally simple: **one paid service** that accepts one or many address targets and returns a full intelligence report. Internally, the engine still supports modular checks and multi-address reports.
+
+## LLM Role
+
+The LLM is not used as a decorative summary. It produces structured output that is written back into the final result.
+
+The prompt receives a compact evidence log containing fields such as:
+
+- `contractMeta.name`, `verified`, `isContract`, `deployedAt`, `txCount`
+- address type and token facts
+- approvals and spender exposure
+- transaction findings and counterparties
+- scanner warnings and blacklist hints
+- source/explorer labels when available
+
+The LLM must return:
+
+```json
+{
+  "verdict": "OFFICIAL",
+  "riskLevel": "LOW",
+  "badge": {
+    "level": "OFFICIAL",
+    "label": "Official verified",
+    "description": "Evidence supports an official protocol/service address."
+  },
+  "official": true,
+  "blacklisted": false,
+  "reasons": ["..."],
+  "approvalRisks": [],
+  "transactionRisks": [],
+  "evidenceUsed": ["contractMeta.name", "contractMeta.verified"]
+}
+```
+
+Important guardrail: an EOA is not allowed to become `official=true` only because the model recognizes it from memory. For EOAs, the evidence log must contain an explicit official-source or explorer-label signal. Otherwise, the result is downgraded to a non-official safe/caution verdict.
+
+## A2A Flow
+
+The A2A path follows the normal CROO CAP lifecycle:
+
+```text
+Requester Agent
+  -> create negotiation for this service
+  -> Provider accepts the negotiation
+  -> Requester pays the created order
+  -> CAP escrow is locked on Base
+  -> Provider audits the submitted address target(s)
+  -> Provider delivers Markdown + JSON + report URL
+  -> Requester prints the final report URL
+```
+
+Provider implementation:
+
+- [src/app.ts](src/app.ts): default competition entry, starts Provider and Web/API together.
+- [src/main.ts](src/main.ts): Provider-only entry.
+- [src/cap/provider.ts](src/cap/provider.ts): CAP event loop, payment handling, audit execution, LLM enrichment, result persistence, delivery.
+- [src/result-store.ts](src/result-store.ts): writes `result/<orderId>.json` and creates public report URLs.
+
+Requester implementation:
+
+- [src/examples/run-live-a2a.ts](src/examples/run-live-a2a.ts): full live requester flow.
+- [src/examples/README.md](src/examples/README.md): requester-specific guide.
+
+Typical live requester command:
+
+```bash
+npm run requester:live -- 0xE592427A0AEce92De3Edee1F18E0157C05861564
+```
+
+The requester prints a final block like:
+
+```text
+==================== REPORT URL ====================
+https://intel.say2agent.com/report?file=<orderId>.json
+====================================================
+```
+
+## API Flow
+
+Start the app:
+
+```bash
+npm run build
+npm start
+```
+
+Then call the local API:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8787/api/orders \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "chain": "ethereum",
+    "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"]
+  }'
+```
+
+The field name `walletAddresses` is kept for backward compatibility, but it now means address targets: wallets, contracts, tokens, routers, bridges, recipients, senders, or transaction counterparties.
+
+Useful API endpoints:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/health` | Health check. |
+| `GET` | `/api/tiers` | Single service catalog, price, payment mode, supported chains. |
+| `POST` | `/api/orders` | Run address intelligence and return the final report. |
+| `GET` | `/result/<orderId>.json` | Load a saved report JSON for the report page. |
+
+## Web Flow
+
+`npm start` also prints the frontend URL, usually:
+
+```text
+http://127.0.0.1:8787/
+```
+
+The Web UI supports:
+
+- single or multi-address checks
+- chain selection
+- progress display
+- payment-gated or local demo mode
+- final report rendering
+- report page URLs such as `/report.html?file=<orderId>.json`
+
+## Supported Chains
+
+Audits are read-only. The app never asks for private keys and never sends transactions from the audited address.
+
+| Chain | API value | Chain id |
+| --- | --- | --- |
+| Ethereum Mainnet | `ethereum` | 1 |
+| Base | `base` | 8453 |
+| Arbitrum One | `arbitrum` | 42161 |
+| OP Mainnet | `optimism` | 10 |
+| Polygon PoS | `polygon` | 137 |
+
+Etherscan V2 is used with one API key across chains. Per-chain RPC URLs are used for read-only code, balance, approval, and metadata checks. Transaction-history coverage outside Ethereum may require a paid Etherscan plan; the audit degrades gracefully when a chain endpoint is unavailable.
 
 ## Quick Start
 
@@ -35,512 +210,131 @@ npm run build
 npm start
 ```
 
-After startup, the process prints:
+Minimum environment for a live Provider:
 
-- The CAP Provider status.
-- The frontend URL, usually `http://127.0.0.1:8787/`.
-- The API base URL, usually `http://127.0.0.1:8787/api`.
+```env
+CROO_SDK_KEY=<provider-agent-key>
+SERVICE_ID=<croo-service-id>
+ETHERSCAN_API_KEY=<etherscan-key>
+ETH_RPC_URL=<ethereum-rpc-url>
+```
 
-The Provider requires `CROO_SDK_KEY`. Ethereum data quality improves when `ETHERSCAN_API_KEY` and `ALCHEMY_RPC_URL` are set.
+Recommended data-source environment:
+
+```env
+BASE_RPC_URL=<base-rpc-url>
+ARBITRUM_RPC_URL=<arbitrum-rpc-url>
+OPTIMISM_RPC_URL=<optimism-rpc-url>
+POLYGON_RPC_URL=<polygon-rpc-url>
+LLM_API_KEY=<openai-compatible-key>
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini
+RESULT_BASE_URL=https://intel.say2agent.com
+```
+
+Requester-side A2A demo environment:
+
+```env
+CROO_REQUESTER_SDK_KEY=<requester-agent-key>
+CROO_TARGET_SERVICE_ID=<provider-service-id>
+```
+
+Never commit real keys. `.env` is ignored.
 
 ## Scripts
 
 | Command | Purpose |
 | --- | --- |
-| `npm run build` | Type-check with `tsc` and copy portal static assets to `dist/portal/public`. |
-| `npm start` | Start Provider + Web/API together from `dist/app.js`. This is the recommended default. |
-| `npm run dev` | Build, then start Provider + Web/API together. |
-| `npm run provider` | Start only the CAP Provider from `dist/main.js`. |
-| `npm run provider:dev` | Build, then start only the CAP Provider. |
-| `npm run portal` | Start only the Web/API server from `dist/portal/main.js`. |
-| `npm run portal:dev` | Build, then start only the Web/API server. |
-| `npm run requester` | Run the A2A Requester example from `dist/examples/requester.js`. |
-| `npm test` | Run the Vitest test suite. |
-| `npm run lint` | Run ESLint. |
-| `npm run preflight` | Validate key environment configuration before a live run. |
-
-There is no `npm run require` script. The A2A requester demo is `npm run requester`.
-
-## A2A Provider Mode
-
-The Provider is the production A2A service surface. Another CAP Requester Agent can:
-
-1. Call `negotiateOrder` with one of this agent's `SERVICE_ID_*` values and audit requirements.
-2. Pay the created order with `payOrder`, locking USDC in CAPVault escrow on Base.
-3. Wait for this Provider to audit the requested wallet(s).
-4. Fetch the delivery with `getDelivery`.
-5. Use the structured report fields such as `riskLevelSummary`, `healthScore`, and `addressStanding.badge`.
-
-Provider flow in this repo:
-
-- `src/main.ts` starts the Provider-only runtime.
-- `src/app.ts` starts Provider + Web/API together.
-- `src/cap/provider.ts` listens for CAP events, accepts matching negotiations, runs the audit on `order_paid`, and delivers the report.
-- `docs/cap-protocol.md` documents the CAP lifecycle and SDK calls used by the project.
-
-### A2A Requester Example
-
-The requester example lives in `src/examples/requester.ts`. Its standalone README is here:
-
-[src/examples/README.md](src/examples/README.md)
-
-Typical usage after `npm run build`:
-
-```bash
-export CROO_SDK_KEY="croo_sk_requester_agent_key"
-export CROO_TARGET_SERVICE_ID="svc_target_audit_service"
-export CROO_TARGET_ORDER_ID="order_created_by_the_negotiation"
-npm run requester -- 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
-```
-
-The example demonstrates the consumer side of A2A composability: hire the audit agent, fetch the CAP delivery, parse the structured JSON, and decide whether to proceed or abort based on `riskLevelSummary`, `healthScore`, and the audited address's `addressStanding` badge.
-
-## HTTP API Mode
-
-When `npm start` or `npm run portal` is running, the local API is served under `/api`.
-
-### Health
-
-```bash
-curl http://127.0.0.1:8787/api/health
-```
-
-### Tiers
-
-```bash
-curl http://127.0.0.1:8787/api/tiers
-```
-
-Returns tier metadata, prices, availability, and configured service IDs.
-
-### Create Audit Order
-
-When running in the default **`free` mode** (`PORTAL_PAYMENT_MODE=free`), you can run a local read-only audit without any payment credentials:
-
-```bash
-curl -X POST http://127.0.0.1:8787/api/orders \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "tier": "FULL",
-    "chain": "ethereum",
-    "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"]
-  }'
-```
-
-For streaming progress, include `"stream": true`; the server responds with Server-Sent Events.
-
-The optional `chain` field selects the audited chain (read-only, multi-chain via Etherscan V2).
-Accepted values: `ethereum` (default), `base`, `arbitrum`, `optimism`, `polygon` — or a chain id /
-display name (e.g. `8453`, `"Base"`). Omit it to audit Ethereum Mainnet. See
-[Multi-chain support](#multi-chain-support).
-
-#### Paying in `paid` mode
-
-Depending on your setup, you can choose one of the three payment verification flows:
-
-##### Flow A: CAP A2A Key-Sharing-Free Flow (Recommended)
-This flow coordinate with local client SDK execution and requires two consecutive HTTP requests:
-
-* **Step 1: Negotiation Acceptance**
-  The client initiates negotiation locally using their SDK key to obtain a `negotiationId`, and submits it to the portal. The server accepts the negotiation using the Provider's credentials and returns the on-chain `orderId`:
-  ```bash
-  curl -X POST http://127.0.0.1:8787/api/orders \
-    -H 'Content-Type: application/json' \
-    -d '{
-      "tier": "FULL",
-      "chain": "ethereum",
-      "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-      "method": "cap",
-      "negotiationId": "your_cap_negotiation_id"
-    }'
-  ```
-  *Response (202 Accepted):*
-  ```json
-  {
-    "negotiationId": "your_cap_negotiation_id",
-    "orderId": "the_created_order_id",
-    "paid": false,
-    "payment": {
-      "method": "cap",
-      "orderId": "the_created_order_id",
-      "status": "created",
-      "priceUsdc": 2
-    }
-  }
-  ```
-
-* **Client Local Payment (No API call)**
-  The client locally executes `payOrder(orderId)` using their own SDK key and funds.
-
-* **Step 2: Order Verification & Delivery**
-  Once paid, the client submits the `orderId` to verify the payment. The server checks the status on the CAP network, runs the audit in-process, delivers the report to the CAP network, and returns the report:
-  ```bash
-  curl -X POST http://127.0.0.1:8787/api/orders \
-    -H 'Content-Type: application/json' \
-    -d '{
-      "tier": "FULL",
-      "chain": "ethereum",
-      "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-      "method": "cap",
-      "orderId": "the_created_order_id"
-    }'
-  ```
-
-##### Flow B: CAP Agent Checkout (Delegate Key)
-If `PORTAL_ALLOW_CROO_KEY=true` is enabled, the client delegates negotiation, payment, and delivery entirely to the portal by submitting their private SDK key.
-```bash
-curl -X POST http://127.0.0.1:8787/api/orders \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "tier": "FULL",
-    "chain": "ethereum",
-    "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-    "method": "cap",
-    "crooKey": "croo_sk_your_requester_agent_key"
-  }'
-```
-
-##### Flow C: MetaMask Direct Base USDC Verification
-The client transfers USDC on Base directly to the payee address via MetaMask and provides the transaction hash:
-```bash
-curl -X POST http://127.0.0.1:8787/api/orders \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "tier": "FULL",
-    "chain": "ethereum",
-    "walletAddresses": ["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"],
-    "method": "metamask",
-    "payTxHash": "0x_your_base_usdc_transfer_tx_hash"
-  }'
-```
-
-- In `PORTAL_PAYMENT_MODE=free`, payment verification failures are logged, but the server falls back to returning the local read-only report.
-- In `PORTAL_PAYMENT_MODE=paid`, payment must successfully verify (either settling the CAP order escrow or confirming the Base USDC receipt) or the API returns `402 Payment Required`.
-
-### `POST /api/orders` response schema
-
-On success (`200`), the JSON body has these fields:
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `orderId` | string | A CAP order id when paid over CAP, or a local run id (`local-…`). |
-| `tier` | `"QUICK" \| "FULL" \| "MULTI"` | The requested tier. |
-| `mode` | `"free" \| "paid"` | The active payment gate. |
-| `paid` | boolean | `true` when a CAP/MetaMask payment was confirmed. |
-| `paymentMethod` | `"metamask"` | Present only for the MetaMask path. |
-| `payTxHash` | string | Settlement/transfer tx hash, when a payment occurred. |
-| `chain` | string | The audited chain key (`ethereum` / `base` / `arbitrum` / `optimism` / `polygon`). |
-| `paymentBypassed` | boolean | `true` when free mode returned a report without enforcing payment. |
-| `paymentNote` | string | Why payment was bypassed (free mode only). |
-| `structured` | object | Machine-readable report. `AuditReportStructured` (single) or `MultiWalletReport` (has `reports[]` + `walletCount`). |
-| `humanReadable` | string | Markdown version of the report. |
-| `decision` | object | A2A gating: `{ proceed, reason, riskLevel, healthScore }`. |
-| `addressIntel` | array | Per-address type-aware intelligence (see below). |
-| `ai` | object | Optional AI insight: `{ explanation, remediation }` or `{ error }`. Present on FULL/MULTI when an LLM is configured. |
-
-`structured` (single-wallet `AuditReportStructured`) key fields:
-
-```jsonc
-{
-  "schemaVersion": "1.0.0",
-  "walletAddress": "0x…",
-  "auditedChain": "Ethereum Mainnet",
-  "auditedChainKey": "ethereum",      // ethereum | base | arbitrum | optimism | polygon
-  "generatedAt": "2026-01-01T00:00:00.000Z",
-  "tier": "FULL",
-  "healthScore": 88,                  // 0–100
-  "healthGrade": "EXCELLENT",         // EXCELLENT | GOOD | FAIR | POOR
-  "riskLevelSummary": "LOW",          // LOW | MEDIUM | HIGH | CRITICAL
-  "addressStanding": {
-    "address": "0x…",
-    "type": "EOA",                    // EOA | ERC20 | ERC721 | ERC1155 | CONTRACT | UNKNOWN
-    "verdict": "OFFICIAL",            // OFFICIAL | LIKELY_SAFE | CAUTION | DANGEROUS | UNKNOWN
-    "riskLevel": "LOW",               // LOW | MEDIUM | HIGH | CRITICAL
-    "official": true,                 // true when verified by the curated official/known-good list
-    "blacklisted": false,
-    "label": "Uniswap V3 Router",
-    "badge": {
-      "level": "OFFICIAL",            // OFFICIAL | SAFE | CAUTION | DANGEROUS | UNKNOWN
-      "label": "Official verified",
-      "description": "Matched the curated official / known-good address list."
-    },
-    "reasons": ["Recognized as an official / known address (Uniswap V3 Router)."]
-  },
-  "scoredOnIncompleteData": false,
-  "readOnlyDeclaration": "…",
-  "approvals": [],                    // ApprovalRecord[]
-  "contractRisks": [],                // ContractRisk[]
-  "assets": null,                     // AssetDistribution | null
-  "txFindings": [],                   // TxFinding[]
-  "revokeAdvice": [],                 // RevokeAdvice[] (each has a revokeLink.url)
-  "moduleStatuses": []                // per-module OK | INCOMPLETE | FAILED
-}
-```
-
-Each `addressIntel[]` entry:
-
-```jsonc
-{
-  "address": "0x…",
-  "type": "EOA",                      // EOA | ERC20 | ERC721 | ERC1155 | CONTRACT | UNKNOWN
-  "verdict": "LIKELY_SAFE",           // OFFICIAL | LIKELY_SAFE | CAUTION | DANGEROUS | UNKNOWN
-  "riskLevel": "LOW",
-  "official": false,
-  "blacklisted": false,
-  "badge": {
-    "level": "SAFE",                  // OFFICIAL | SAFE | CAUTION | DANGEROUS | UNKNOWN
-    "label": "Likely safe",
-    "description": "No risk signals were found in the available deterministic data."
-  },
-  "label": "…",                       // curated label, if known
-  "reasons": ["…"],
-  "token": {                          // present for ERC-20 token contracts
-    "symbol": "…", "name": "…",
-    "hasOwner": true, "mintable": true, "pausable": false, "hasBlacklist": true
-  },
-  "aiAssessment": "…",                // Markdown; present on FULL/MULTI with an LLM
-  "activity": {                       // present for EOA wallets on FULL/MULTI
-    "windowDays": 90,
-    "analyzedCount": 29,
-    "records": [                      // annotated transaction records, newest-first
-      {
-        "txHash": "0x…",
-        "timestamp": "2026-05-21T20:05:47.000Z",
-        "direction": "OUT",           // IN | OUT
-        "counterparty": "0x…",        // the "other side"; null for contract creation
-        "counterpartyIsContract": true,
-        "counterpartyLabel": "…",     // curated label, if known
-        "success": true,
-        "valueEth": "0.0024",
-        "valueUsd": null,
-        "flags": ["CONTRACT"]         // OFFICIAL | RISKY | CONTRACT | CREATION
-      }
-    ],
-    "counterparties": [               // unique counterparties ranked by interaction count
-      { "address": "0x…", "interactions": 6, "isContract": true, "official": false, "blacklisted": false }
-    ]
-  },
-  "related": [                        // present on MULTI: deeper look at related addresses
-    {
-      "address": "0x…",
-      "relation": "COUNTERPARTY",     // COUNTERPARTY (wallet's top peers) | OWNER (token owner)
-      "interactions": 6,
-      "type": "CONTRACT",
-      "verdict": "CAUTION",
-      "riskLevel": "MEDIUM",
-      "official": false,
-      "blacklisted": false,
-      "badge": { "level": "CAUTION", "label": "Use caution", "description": "…" },
-      "reasons": ["…"],
-      "aiAssessment": "…"             // Markdown; present when an LLM is configured
-    }
-  ]
-}
-```
-
-The report is **address-type-first**: the audited address's detected `type` leads the result and
-each type renders a tailored structure (a personal wallet shows its annotated transaction history;
-a token shows its safety signals). The three tiers differ in depth:
-
-| Tier | LLM analysis* | Transaction history (EOA) | Related-address analysis |
-| --- | --- | --- | --- |
-| QUICK | — | — | — |
-| FULL | yes | yes (annotated counterparties) | — |
-| MULTI | yes | yes (longer window) | yes (top counterparties / token owner, each typed + risk-assessed) |
-
-*LLM analysis is included only when `LLM_API_KEY` is configured; otherwise the deterministic report
-is returned unchanged (the AI layer is strictly additive). `GET /api/tiers` reports `aiEnabled` and
-omits AI highlights when no LLM is configured.
-
-Error responses use `{ "error": string, "code"?: string }` with an appropriate status:
-`400` (bad input), `402` (`PAYMENT_REQUIRED` / `PAYMENT_NOT_VERIFIED`), `403` (`CROO_KEY_DISABLED`),
-`502`/`504` (CAP checkout failure / timeout).
-
-### Multi-chain support
-
-The audit is read-only and multi-chain. The `chain` field on `POST /api/orders` (and `POST /api/vet`)
-selects which EVM chain to audit; the Web UI exposes it as a dropdown. `GET /api/tiers` lists the
-supported chains under `chains[]` with `defaultChain`.
-
-| Chain | `chain` value | Chain id |
-| --- | --- | --- |
-| Ethereum Mainnet | `ethereum` (default) | 1 |
-| Base | `base` | 8453 |
-| Arbitrum One | `arbitrum` | 42161 |
-| OP Mainnet | `optimism` | 10 |
-| Polygon PoS | `polygon` | 137 |
-
-How it works: Etherscan V2 is a single-key, multi-chain API — the same `ETHERSCAN_API_KEY` queries
-every chain by switching the `chainid` parameter. viem read-only RPC calls (address-type detection,
-balances, approvals, contract metadata) use the per-chain RPC, and CoinGecko USD valuation uses the
-chain's asset-platform automatically. Revocation links and the report's `auditedChain` are stamped
-for the selected chain, and the LLM prompts are told which chain the facts belong to.
-
-Configure a per-chain RPC with `ETH_RPC_URL` / `BASE_RPC_URL` / `ARBITRUM_RPC_URL` /
-`OPTIMISM_RPC_URL` / `POLYGON_RPC_URL` (each falls back to a public RPC if unset).
-
-> **Note on the Etherscan free plan:** transaction-history endpoints (`txlist`, internal txs, token
-> transfers) are only free on Ethereum Mainnet. Auditing transaction history on Base / Arbitrum /
-> Optimism / Polygon requires a paid Etherscan plan. RPC-based checks (address type, balances,
-> approvals, contract metadata) work on all chains on the free plan; the audit degrades gracefully
-> (empty transaction history) when the history endpoints are unavailable for a chain.
-
-The canonical TypeScript types are in [`src/models.ts`](./src/models.ts).
-
-### Vet Address
-
-```bash
-curl -X POST http://127.0.0.1:8787/api/vet \
-  -H 'Content-Type: application/json' \
-  -d '{ "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" }'
-```
-
-This endpoint performs focused address/counterparty intelligence for fast risk screening.
-
-## Web UI Mode
-
-The Web UI is served by the same portal server. Start it with:
-
-```bash
-npm start
-```
-
-Then open the URL printed by the process, normally:
-
-```text
-http://127.0.0.1:8787/
-```
-
-The browser flow supports:
-
-- Tier selection.
-- One or more wallet addresses.
-- Progress updates during audit.
-- Demo/free mode for competition testing.
-- Optional CAP checkout using a user-supplied CROO key when enabled.
-- Optional MetaMask payment verification by Base USDC transfer.
-- Dedicated report rendering page.
-
-## Environment
-
-Core CAP Provider:
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `CROO_SDK_KEY` | Yes | Provider Agent API key from CROO. |
-| `CROO_API_URL` | No | CAP API base URL. Defaults to `https://api.croo.network`. |
-| `CROO_WS_URL` | No | CAP WebSocket URL. Defaults to `wss://api.croo.network/ws`. |
-| `RPC_URL` | No | Base settlement RPC override for the CROO SDK. |
-| `SERVICE_ID_QUICK` | Live Provider | CAP Service ID for `QUICK`. |
-| `SERVICE_ID_FULL` | Live Provider | CAP Service ID for `FULL`. |
-| `SERVICE_ID_MULTI` | Live Provider | CAP Service ID for `MULTI`. |
-
-Ethereum data sources:
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `ETHERSCAN_API_KEY` | Recommended | Etherscan V2 transaction, token, and contract metadata (single key, multi-chain). |
-| `ETH_RPC_URL` / `BASE_RPC_URL` / `ARBITRUM_RPC_URL` / `OPTIMISM_RPC_URL` / `POLYGON_RPC_URL` | Recommended | Per-chain read-only RPC for viem calls (each falls back to a public RPC). `ALCHEMY_RPC_URL` is a legacy alias for Ethereum. |
-| `COINGECKO_API_KEY` | No | Higher rate limits for valuation data. |
-| `COINGECKO_PRO` | No | Set to `true` when using CoinGecko Pro. |
-
-Portal/Web/API:
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `PORTAL_PORT` | No | HTTP port. Defaults to `8787`. |
-| `PORTAL_ORDER_TIMEOUT_MS` | No | Per-audit timeout. Defaults to `120000`. |
-| `PORTAL_PAYMENT_MODE` | No | `free` or `paid`. Defaults to `free`. |
-| `PORTAL_ALLOW_CROO_KEY` | No | Set to `true` to show/accept user CROO keys for CAP checkout. |
-| `PORTAL_PAYEE_ADDRESS` | MetaMask path | Base address that receives USDC transfers. |
-| `PORTAL_BASE_RPC_URL` | No | Base RPC for verifying MetaMask USDC transfers. Defaults to public Base RPC. |
-
-LLM skills:
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `LLM_API_KEY` | No | Enables optional LLM insight layer. |
-| `LLM_BASE_URL` | No | OpenAI-compatible base URL. Defaults to `https://api.openai.com/v1`. |
-| `LLM_MODEL` | No | Model name. Defaults to `gpt-4o-mini`. |
-| `LLM_TEMPERATURE` | No | Defaults to `0.2`. |
-| `LLM_MAX_TOKENS` | No | Defaults to `1200`. |
-
-A2A Requester example:
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `CROO_SDK_KEY` | Yes | Requester Agent API key when running `npm run requester`. |
-| `CROO_TARGET_SERVICE_ID` | Yes | Target Provider Service ID to hire. |
-| `CROO_TARGET_ORDER_ID` | Yes for current runnable demo | Order ID created after negotiation acceptance. |
-| `CROO_AUDIT_WALLET` | If no CLI arg | Wallet address to audit. |
-
-See `.env.example` for a complete template.
-
-## Architecture
-
-```text
-src/
-  app.ts                         Unified Provider + Web/API entry
-  main.ts                        Provider-only entry
-  cap/provider.ts                CAP event loop and delivery logic
-  orchestrator.ts                Audit orchestration
-  datasource/                    Ethereum data providers and risk rules
-  modules/                       Address inspection, intel, reports, payment helpers
-  llm/                           Optional LangChain/OpenAI-compatible skills
-  portal/
-    main.ts                      Portal-only entry
-    server.ts                    HTTP API and static file server
-    local-auditor.ts             Web/API adapter over the audit engine
-    cap-checkout.ts              Per-request CAP checkout driver
-    metamask-payment.ts          Base USDC transfer verifier
-    public/                      Web UI assets and report renderer
-  examples/requester.ts          A2A Requester demo
-```
-
-Key runtime decision:
-
-- `npm start` uses `src/app.ts`.
-- The Provider owns the CAP WebSocket.
-- Web/API orders reuse the same in-process audit engine instead of opening a second CAP connection.
-- `npm run portal` is still useful for local Web/API development without the Provider loop.
-
-## Security Model
-
-- Audits are read-only across the supported EVM chains.
-- The service does not require, store, or log private keys.
-- CROO SDK keys are injected through environment variables.
-- Browser-supplied CROO keys are a demo checkout capability and are off unless `PORTAL_ALLOW_CROO_KEY=true`.
-- `PORTAL_PAYMENT_MODE=free` is for local development and competition demos only; use `paid` when settlement must be enforced.
-- MetaMask payment verification reads Base receipts and checks USDC `Transfer` logs to `PORTAL_PAYEE_ADDRESS`.
-
-## Testing And Verification
+| `npm run build` | Type-check and copy portal assets into `dist/`. |
+| `npm start` | Start Provider + Web/API together. This is the recommended competition/demo command. |
+| `npm run provider` | Start only the CROO CAP Provider. |
+| `npm run portal` | Start only the Web/API server. |
+| `npm run requester:live` | Run the live A2A requester example. |
+| `npm test` | Run the Vitest suite. |
+| `npm run preflight` | Validate environment configuration before live runs. |
+
+## Verification
+
+The focused competition verification command is:
 
 ```bash
 npm run build
-npm test
-npm run lint
+npx vitest --run test/llm-skills.test.ts test/local-auditor-llm.test.ts test/cap-provider.test.ts test/requester-example.test.ts
 ```
 
-Useful focused tests include:
+Latest verified result in this workspace:
 
-- `test/requester-example.test.ts` for A2A requester decision logic.
-- `test/portal-server.test.ts` for API behavior.
-- `test/address-inspector.test.ts` and `test/address-intel.test.ts` for address risk modules.
-- `test/llm-skills.test.ts` for optional LLM skill behavior.
+```text
+npm run build: passed
+target vitest suite: 4 files, 39 tests passed
+HyperFrames video check: 0 layout issues
+feature demo video: 1920x1080, 30fps, 192s
+```
 
-## Competition Demo Checklist
+## Project Layout
 
-1. Fill `.env` with `CROO_SDK_KEY`, `SERVICE_ID_*`, and data source keys.
-2. Run `npm run preflight`.
-3. Run `npm run build`.
-4. Run `npm start`.
-5. Confirm the console prints the Web UI URL and API order URL.
-6. Demo the Web UI.
-7. Demo the API with `POST /api/orders` or `POST /api/vet`.
-8. Demo A2A using `npm run requester` and the dedicated requester README.
+```text
+src/
+  app.ts                         Provider + Web/API entry
+  main.ts                        Provider-only entry
+  cap/provider.ts                CROO CAP event loop and delivery logic
+  result-store.ts                Saved result JSON and report URL helper
+  orchestrator.ts                Audit orchestration
+  datasource/                    Etherscan/RPC/CoinGecko providers
+  modules/                       Address inspection, reports, payment helpers
+  llm/                           LLM prompts and structured verdict parsing
+  portal/
+    server.ts                    HTTP API and static file server
+    local-auditor.ts             Web/API adapter over the audit engine
+    public/                      Web UI and report renderer
+  examples/
+    run-live-a2a.ts              Full live A2A requester demo
+test/
+  llm-skills.test.ts             LLM verdict and evidence-gate tests
+  local-auditor-llm.test.ts      Web/API LLM writeback test
+  cap-provider.test.ts           A2A provider delivery and result-store tests
+test-guide/
+  testing_guide.md               Detailed Chinese demo/testing guide
+  a2a-demo-runs-2026-06-10.md    Pinned successful live A2A demo runs
+  hyperframes-a2a-demo/          Competition feature video source
+```
 
-## More Documentation
+## CROO Agent Store Copy
 
-- [CAP protocol reference](docs/cap-protocol.md)
-- [A2A requester example](src/examples/README.md)
-- [.env template](.env.example)
+Recommended agent name:
+
+```text
+Web3 Address Intel & Risk Agent
+```
+
+Recommended service name:
+
+```text
+Web3 Address Intel Report
+```
+
+Short description:
+
+```text
+Read-only multi-chain Web3 address intelligence agent. Submit any EVM wallet, token, NFT, contract, router, bridge, recipient, sender, or transaction counterparty address; the agent collects Etherscan/RPC evidence and returns an evidence-backed official/safe/caution/dangerous badge, risk level, explanation, JSON report, and shareable report URL.
+```
+
+Suggested deliverable text:
+
+```text
+The buyer receives a Web3 address intelligence report for the submitted address target(s), including address type, official/safe/caution/dangerous badge, risk level, health score, contract metadata, approval and transaction-risk findings, LLM evidence verdict, machine-readable JSON, Markdown summary, and a shareable report page URL.
+```
+
+Suggested requirements text:
+
+```text
+Provide one or more EVM address targets to inspect. Each target may be a wallet, token, NFT collection, contract, router, bridge, recipient, sender, or transaction counterparty address. Optionally specify the audited chain; Ethereum Mainnet is used by default.
+```
+
+## Security Notes
+
+- The audit is read-only.
+- The service never asks for an audited wallet private key.
+- A2A payment and escrow are handled through CROO CAP on Base.
+- Web/API deployments need external authentication and rate limiting before public exposure.
+- LLM output is evidence-gated and should not be treated as a replacement for independent user verification.

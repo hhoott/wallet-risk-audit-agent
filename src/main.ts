@@ -21,8 +21,8 @@
  *
  * Required runtime environment variables (injected, NEVER hard-coded):
  *  - CROO_SDK_KEY                         MANUAL(H1-1): produced when registering the Agent.
- *  - SERVICE_ID_QUICK / _FULL / _MULTI    MANUAL(H1-2): produced after configuring Services.
- *  - ETHERSCAN_API_KEY / ALCHEMY_RPC_URL  MANUAL(H7-12): audited-chain data source keys.
+ *  - SERVICE_ID                           MANUAL(H1-2): produced after configuring the Service.
+ *  - ETHERSCAN_API_KEY / per-chain RPC URLs MANUAL(H7-12): audited-chain data source keys.
  *  - COINGECKO_API_KEY                    MANUAL(H7-12): price source key (optional; raises limits).
  */
 
@@ -40,6 +40,8 @@ import {
   type CapClient,
   type CapLogger,
 } from "./cap/provider.js";
+import { loadLlmConfig } from "./llm/config.js";
+import { createChatModel, AuditSkillSet } from "./llm/skills.js";
 
 // ── Provider assembly ──────────────────────────────────────────────────────────────────
 
@@ -70,7 +72,7 @@ export interface BuildProviderOptions {
  *  2. Build the {@link RetryPolicy} (injected, or default 10s timeout / 4 attempts).
  *  3. Build the three read-only data Providers (injected, or {@link buildProvidersFromConfig}).
  *  4. Build the {@link AuditOrchestrator} over those providers (tier routing + partial-success).
- *  5. Resolve the Service_ID → Tier map (only tiers whose Service_ID is configured are included).
+ *  5. Resolve the single Service_ID → default analysis-depth map.
  *  6. Build the {@link CapClient} (injected fake in tests, or the real SDK-backed client).
  *  7. Construct the {@link WalletAuditProvider} wired with all of the above.
  *
@@ -96,18 +98,22 @@ export async function buildProvider(
     now: options.now,
   });
 
-  // Service_ID → Tier map. MANUAL(H1-2): the Service_IDs are injected via env (SERVICE_ID_QUICK/FULL/MULTI).
+  // Service_ID → Tier map. MANUAL(H1-2): the Service_ID is injected via env.
   const serviceTierMap = resolveServiceTierMap(config);
 
   // The CAP client is the ONLY component that touches the SDK; tests inject a fake instead.
   // MANUAL(H1-1): CROO_SDK_KEY is injected via env and consumed by createCapClient.
   const client = options.capClient ?? createCapClient(config);
+  const llm = loadLlmConfig();
+  const model = llm.enabled ? await createChatModel(llm) : undefined;
+  const skills = model ? new AuditSkillSet(model) : undefined;
 
   return new WalletAuditProvider({
     client,
     orchestrator,
     serviceTierMap,
     logger: options.logger ?? createConsoleLogger(),
+    skills,
   });
 }
 
@@ -116,11 +122,9 @@ export async function buildProvider(
 /** The required environment variables, surfaced in the startup error message when config is missing. */
 const REQUIRED_ENV_VARS: readonly string[] = [
   "CROO_SDK_KEY", // MANUAL(H1-1)
-  "SERVICE_ID_QUICK", // MANUAL(H1-2)
-  "SERVICE_ID_FULL", // MANUAL(H1-2)
-  "SERVICE_ID_MULTI", // MANUAL(H1-2)
+  "SERVICE_ID", // MANUAL(H1-2)
   "ETHERSCAN_API_KEY", // MANUAL(H7-12)
-  "ALCHEMY_RPC_URL", // MANUAL(H7-12)
+  "ETH_RPC_URL", // MANUAL(H7-12)
   "COINGECKO_API_KEY", // MANUAL(H7-12)
 ];
 
@@ -129,7 +133,7 @@ const REQUIRED_ENV_VARS: readonly string[] = [
  * the bootstrap fails to load configuration (e.g. CROO_SDK_KEY is missing).
  */
 function printMissingConfigHelp(error: MissingConfigError): void {
-  console.error(`[main] Cannot start WalletAuditProvider: ${error.message}`);
+  console.error(`[main] Cannot start AddressIntelProvider: ${error.message}`);
   console.error(
     "[main] The following environment variables must be injected before starting " +
       "(never hard-code them):",
@@ -139,8 +143,8 @@ function printMissingConfigHelp(error: MissingConfigError): void {
   }
   console.error(
     "[main] CROO_SDK_KEY comes from registering the Agent (MANUAL H1-1); " +
-      "SERVICE_ID_QUICK/FULL/MULTI from configuring Services in the Dashboard (MANUAL H1-2); " +
-      "ETHERSCAN_API_KEY / ALCHEMY_RPC_URL / COINGECKO_API_KEY from the data/price providers (MANUAL H7-12).",
+      "SERVICE_ID from configuring the single Service in the Dashboard (MANUAL H1-2); " +
+      "ETHERSCAN_API_KEY / per-chain RPC URLs / COINGECKO_API_KEY from the data/price providers (MANUAL H7-12).",
   );
 }
 
@@ -155,7 +159,7 @@ export async function startProvider(options: BuildProviderOptions = {}): Promise
   const provider = await buildProvider(options);
   await provider.start();
   console.info(
-    "[main] WalletAuditProvider is listening for CAP events (read-only Ethereum audits; " +
+    "[main] AddressIntelProvider is listening for CAP events (read-only multi-chain address intelligence; " +
       "settlement via CAP on Base).",
   );
   return {
@@ -175,7 +179,7 @@ export async function main(): Promise<void> {
   try {
     const started = await startProvider();
     const shutdown = (): void => {
-      console.info("[main] Shutting down WalletAuditProvider...");
+      console.info("[main] Shutting down AddressIntelProvider...");
       started.stop();
       process.exit(0);
     };
@@ -192,7 +196,7 @@ export async function main(): Promise<void> {
       printMissingConfigHelp(error);
     } else {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[main] WalletAuditProvider failed to start: ${message}`);
+      console.error(`[main] AddressIntelProvider failed to start: ${message}`);
     }
     process.exitCode = 1;
   }

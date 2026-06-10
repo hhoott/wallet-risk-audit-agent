@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   WalletAuditProvider,
@@ -20,6 +23,7 @@ import {
 } from "../src/datasource/mock.js";
 import { APIError, EventType } from "@croo-network/sdk";
 import type { Tier } from "../src/config.js";
+import { AuditSkillSet, type ChatModel } from "../src/llm/skills.js";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────────────────
 
@@ -30,11 +34,7 @@ const ISO = "2024-01-01T00:00:00.000Z";
 
 /** A configured Service_ID → Tier map mirroring buildServiceTierMap output. */
 function tierMap(): Map<string, Tier> {
-  return new Map<string, Tier>([
-    ["svc-quick", "QUICK"],
-    ["svc-full", "FULL"],
-    ["svc-multi", "MULTI"],
-  ]);
+  return new Map<string, Tier>([["svc-address-intel", "FULL"]]);
 }
 
 /** Build a real orchestrator over mock data sources (all OK unless `fail` flags are set). */
@@ -163,6 +163,34 @@ class FakeCapClient implements CapClient {
   }
 }
 
+class ProviderJsonModel implements ChatModel {
+  complete(_systemPrompt: string, _userPrompt: string, label = "call"): Promise<string> {
+    if (label === "classifyAddressEvidence") {
+      return Promise.resolve(
+        JSON.stringify({
+          address: WALLET,
+          verdict: "OFFICIAL",
+          riskLevel: "LOW",
+          badge: {
+            level: "OFFICIAL",
+            label: "Official verified",
+            description: "LLM evidence classification marked this as official.",
+          },
+          official: true,
+          blacklisted: false,
+          label: "LLM Official Address",
+          confidence: "HIGH",
+          reasons: ["The evidence log supports the official address label."],
+          approvalRisks: [],
+          transactionRisks: [],
+          evidenceUsed: ["typeFacts.contractMeta.contractName"],
+        }),
+      );
+    }
+    return Promise.resolve("AI markdown");
+  }
+}
+
 // ── Negotiation wiring (task 16.2, requirements 2.2 / 2.6) ──────────────────────────────
 
 describe("CAP Provider — negotiation handler wiring", () => {
@@ -170,7 +198,7 @@ describe("CAP Provider — negotiation handler wiring", () => {
     const client = new FakeCapClient({
       negotiations: {
         "neg-1": {
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requirements: JSON.stringify({ walletAddresses: [WALLET] }),
         },
       },
@@ -212,7 +240,7 @@ describe("CAP Provider — negotiation handler wiring", () => {
   it("rejects a negotiation when wallet parameters are missing, with a reason", async () => {
     const client = new FakeCapClient({
       negotiations: {
-        "neg-3": { serviceId: "svc-quick", requirements: JSON.stringify({ walletAddresses: [] }) },
+        "neg-3": { serviceId: "svc-address-intel", requirements: JSON.stringify({ walletAddresses: [] }) },
       },
     });
 
@@ -232,56 +260,92 @@ describe("CAP Provider — negotiation handler wiring", () => {
 
 describe("CAP Provider — order_paid delivery wiring", () => {
   it("delivers a schema deliverable and records the settlement on a successful audit", async () => {
-    const { orchestrator } = makeOrchestrator();
+    const resultDir = await mkdtemp(join(tmpdir(), "croo-result-"));
+    const { orchestrator } = makeOrchestrator({
+      addressType: { [WALLET.toLowerCase()]: "CONTRACT" },
+      contractMeta: {
+        [WALLET.toLowerCase()]: {
+          contract: WALLET,
+          name: "LLMOfficialRouter",
+          verified: true,
+          deployedAt: "2024-01-01T00:00:00.000Z",
+          txCount: 10000,
+          audited: false,
+          isContract: true,
+        },
+      },
+    });
     const ledger = new SettlementLedger();
     const client = new FakeCapClient({
       orders: {
         "order-1": {
           orderId: "order-1",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: WALLET }),
         },
       },
     });
 
-    const result = await handleOrderPaid(
-      client,
-      { type: "x", order_id: "order-1" },
-      { orchestrator, serviceTierMap: tierMap(), ledger },
-    );
+    try {
+      const result = await handleOrderPaid(
+        client,
+        { type: "x", order_id: "order-1" },
+        {
+          orchestrator,
+          serviceTierMap: tierMap(),
+          ledger,
+          skills: new AuditSkillSet(new ProviderJsonModel()),
+          resultStore: { dir: resultDir, baseUrl: "https://intel.say2agent.com" },
+        },
+      );
 
-    expect(result.action).toBe("DELIVERED");
-    expect(client.calls.deliverOrder).toHaveLength(1);
-    expect(client.calls.rejectOrder).toHaveLength(0);
+      expect(result.action).toBe("DELIVERED");
+      expect(client.calls.deliverOrder).toHaveLength(1);
+      expect(client.calls.rejectOrder).toHaveLength(0);
 
-    const { req } = client.calls.deliverOrder[0]!;
-    // Deliverable carries both forms: schema type + non-empty schema (valid JSON) + text.
-    expect(req.deliverableType).toBe("schema");
-    expect(typeof req.deliverableSchema).toBe("string");
-    expect(req.deliverableSchema!.length).toBeGreaterThan(0);
-    const parsed = JSON.parse(req.deliverableSchema!);
-    expect(parsed.walletAddress).toBe(WALLET);
-    expect(parsed.tier).toBe("FULL");
-    expect(typeof req.deliverableText).toBe("string");
-    expect(req.deliverableText!.length).toBeGreaterThan(0);
+      const { req } = client.calls.deliverOrder[0]!;
+      // Deliverable carries both forms: schema type + non-empty schema (valid JSON) + text.
+      expect(req.deliverableType).toBe("schema");
+      expect(typeof req.deliverableSchema).toBe("string");
+      expect(req.deliverableSchema!.length).toBeGreaterThan(0);
+      const parsed = JSON.parse(req.deliverableSchema!);
+      expect(parsed.walletAddress).toBe(WALLET);
+      expect(parsed.tier).toBe("FULL");
+      expect(parsed.addressStanding.badge.level).toBe("OFFICIAL");
+      expect(parsed.addressIntel[0].aiVerdict.badge.level).toBe("OFFICIAL");
+      expect(parsed.addressIntel[0].standing.badge.level).toBe("OFFICIAL");
+      expect(parsed.resultPageUrl).toBe("https://intel.say2agent.com/report?file=order-1.json");
+      expect(typeof req.deliverableText).toBe("string");
+      expect(req.deliverableText).toContain("LLM Evidence Verdict");
+      expect(req.deliverableText).toContain("https://intel.say2agent.com/report?file=order-1.json");
 
-    // Settlement recorded against the payer with the full tier amount.
-    const settlement = ledger.get("order-1");
-    expect(settlement).toBeDefined();
-    expect(settlement!.tier).toBe("FULL");
-    expect(settlement!.payerAddress).toBe(PAYER);
-    expect(settlement!.amountUsdc).toBe(2);
+      const saved = JSON.parse(await readFile(join(resultDir, "order-1.json"), "utf8"));
+      expect(saved.resultPageUrl).toBe("https://intel.say2agent.com/report?file=order-1.json");
+      expect(saved.structured.walletAddress).toBe(WALLET);
+      expect(saved.structured.addressStanding.badge.level).toBe("OFFICIAL");
+      expect(saved.addressIntel[0].aiVerdict.badge.level).toBe("OFFICIAL");
+      expect(saved.humanReadable).toContain("LLM Evidence Verdict");
+
+      // Settlement recorded against the payer with the full tier amount.
+      const settlement = ledger.get("order-1");
+      expect(settlement).toBeDefined();
+      expect(settlement!.tier).toBe("FULL");
+      expect(settlement!.payerAddress).toBe(PAYER);
+      expect(settlement!.amountUsdc).toBe(0.01);
+    } finally {
+      await rm(resultDir, { recursive: true, force: true });
+    }
   });
 
-  it("delivers a multi-wallet schema deliverable for the MULTI tier", async () => {
+  it("delivers a multi-address schema deliverable when the single service receives several addresses", async () => {
     const { orchestrator } = makeOrchestrator();
     const ledger = new SettlementLedger();
     const client = new FakeCapClient({
       orders: {
         "order-multi": {
           orderId: "order-multi",
-          serviceId: "svc-multi",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddresses: [WALLET, WALLET_2] }),
         },
@@ -300,7 +364,7 @@ describe("CAP Provider — order_paid delivery wiring", () => {
     // Multi-wallet structured report carries a walletCount and per-wallet reports.
     expect(parsed.walletCount).toBe(2);
     expect(Array.isArray(parsed.reports)).toBe(true);
-    expect(ledger.get("order-multi")!.amountUsdc).toBe(5);
+    expect(ledger.get("order-multi")!.amountUsdc).toBe(0.01);
   });
 
   it("uploads the report when it exceeds the upload threshold and embeds the object key", async () => {
@@ -311,7 +375,7 @@ describe("CAP Provider — order_paid delivery wiring", () => {
       orders: {
         "order-big": {
           orderId: "order-big",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: WALLET }),
         },
@@ -342,7 +406,7 @@ describe("CAP Provider — order_paid delivery wiring", () => {
       orders: {
         "order-fail": {
           orderId: "order-fail",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: WALLET }),
         },
@@ -368,7 +432,7 @@ describe("CAP Provider — order_paid delivery wiring", () => {
       orders: {
         "order-noargs": {
           orderId: "order-noargs",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           // No parseable wallet addresses.
           requirements: JSON.stringify({ foo: "bar" }),
@@ -420,7 +484,7 @@ describe("CAP Provider — loop resilience", () => {
     const client = new FakeCapClient({
       negotiations: {
         "neg-err": {
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requirements: JSON.stringify({ walletAddresses: [WALLET] }),
         },
       },
@@ -443,7 +507,7 @@ describe("CAP Provider — loop resilience", () => {
       orders: {
         "order-err": {
           orderId: "order-err",
-          serviceId: "svc-full",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: WALLET }),
         },
@@ -470,14 +534,14 @@ describe("CAP Provider — event routing", () => {
     const client = new FakeCapClient({
       negotiations: {
         "neg-r": {
-          serviceId: "svc-quick",
+          serviceId: "svc-address-intel",
           requirements: JSON.stringify({ walletAddress: WALLET }),
         },
       },
       orders: {
         "order-r": {
           orderId: "order-r",
-          serviceId: "svc-quick",
+          serviceId: "svc-address-intel",
           requesterWalletAddress: PAYER,
           requirements: JSON.stringify({ walletAddress: WALLET }),
         },

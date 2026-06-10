@@ -1,7 +1,7 @@
-// Wallet Risk Audit portal — frontend logic (vanilla ES module, no build step).
+// Web3 Address Intel portal — frontend logic (vanilla ES module, no build step).
 //
 // Responsibilities:
-//  - Load bookable tiers from /api/tiers and render the pricing cards + the order form's tier menu.
+//  - Load the bookable service from /api/tiers and render the pricing card.
 //  - Validate the wallet input client-side (mirrors the server's 0x + 40 hex rule) for fast feedback.
 //  - Place an order via POST /api/orders (SSE), show staged progress + a live log, then hand the
 //    result to a SEPARATE result page (/report) via sessionStorage.
@@ -46,7 +46,7 @@ const els = {
   mmError: document.getElementById("mm-error"),
 };
 
-/** App state: the loaded tiers + payment config. */
+/** App state: the loaded service + payment config. */
 const state = {
   tiers: new Map(),
   chains: [],
@@ -91,7 +91,7 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-// ── Tier loading & rendering ────────────────────────────────────────────────
+// ── Service loading & rendering ─────────────────────────────────────────────
 
 async function loadTiers() {
   try {
@@ -157,7 +157,7 @@ function renderTiers(tiers) {
     state.tiers.set(t.tier, t);
     els.tiersGrid.appendChild(renderTierCard(t));
 
-    // Populate the order form's tier menu (only bookable tiers are selectable).
+    // Keep the hidden tier menu populated for backward-compatible API payloads.
     const opt = h("option", {
       text: `${t.name} — ${formatPrice(t.priceUsdc)} USDC`,
       attrs: { value: t.tier },
@@ -169,7 +169,7 @@ function renderTiers(tiers) {
     els.tierSelect.appendChild(opt);
   }
 
-  // Default the menu to the first available tier and sync the wallet field hint.
+  // Default the hidden menu to the first available service and sync the address field hint.
   const firstAvailable = tiers.find((t) => t.available);
   if (firstAvailable) els.tierSelect.value = firstAvailable.tier;
   syncWalletFieldForTier();
@@ -177,16 +177,16 @@ function renderTiers(tiers) {
 
 function renderTierCard(t) {
   const card = h("div", {
-    class: `tier-card${t.tier === "FULL" ? " tier-card--featured" : ""}`,
+    class: "tier-card tier-card--featured",
     attrs: { role: "listitem" },
   });
 
-  if (t.tier === "FULL") card.appendChild(h("span", { class: "tier-card__badge", text: "Most popular" }));
+  card.appendChild(h("span", { class: "tier-card__badge", text: "Single service" }));
   card.appendChild(h("h3", { class: "tier-card__name", text: t.name }));
 
   const price = h("p", { class: "tier-card__price", html: `${formatPrice(t.priceUsdc)} <small>USDC</small>` });
   card.appendChild(price);
-  card.appendChild(h("p", { class: "tier-card__per", text: t.multi ? "per multi-wallet order" : "per wallet" }));
+  card.appendChild(h("p", { class: "tier-card__per", text: "per address intelligence report" }));
 
   const list = h("ul", { class: "tier-card__list" });
   for (const item of t.highlights ?? []) list.appendChild(h("li", { text: item }));
@@ -209,16 +209,12 @@ function renderTierCard(t) {
   return card;
 }
 
-/** Update the wallet field label/hint/placeholder depending on the selected tier (single vs multi). */
+/** Keep the address field copy aligned with the single service. */
 function syncWalletFieldForTier() {
-  const tier = els.tierSelect.value;
-  const isMulti = state.tiers.get(tier)?.multi === true;
-  els.walletLabel.textContent = isMulti ? "Wallet addresses" : "Wallet address";
-  els.walletHint.textContent = isMulti
-    ? "One Ethereum address per line (up to 50)."
-    : "A single Ethereum address (0x + 40 hex).";
-  els.wallet.placeholder = isMulti ? "0x…\n0x…" : "0x…";
-  els.wallet.rows = isMulti ? 4 : 1;
+  els.walletLabel.textContent = "Address targets";
+  els.walletHint.textContent = "One or more EVM addresses (up to 50), separated by spaces, commas, or new lines.";
+  els.wallet.placeholder = "0x…\n0x…";
+  els.wallet.rows = 4;
 }
 
 // ── Order placement ─────────────────────────────────────────────────────────
@@ -233,14 +229,11 @@ function parseWalletInput() {
 
 /** Client-side validation mirroring the server's rules; returns an error string or null. */
 function validateInput(tier, addresses) {
-  if (addresses.length === 0) return "Please enter at least one wallet address.";
-  const isMulti = state.tiers.get(tier)?.multi === true;
-  if (!isMulti && addresses.length > 1) {
-    return "This tier audits a single wallet. Switch to Multi-Wallet to audit several at once.";
-  }
+  void tier;
+  if (addresses.length === 0) return "Please enter at least one address target.";
   if (addresses.length > 50) return "At most 50 addresses per order.";
   const bad = addresses.find((a) => !ADDRESS_RE.test(a));
-  if (bad) return `“${shortAddr(bad)}” is not a valid Ethereum address (expected 0x + 40 hex).`;
+  if (bad) return `“${shortAddr(bad)}” is not a valid EVM address (expected 0x + 40 hex).`;
   return null;
 }
 
@@ -273,8 +266,8 @@ function openPayModal(tier, addresses) {
   const price = t ? formatPrice(t.priceUsdc) : "?";
   const count = addresses.length;
   els.paySummary.innerHTML =
-    `Order: <strong>${escapeHtml(t ? t.name : tier)}</strong> · ` +
-    `<strong>${price} USDC</strong> · ${count} wallet${count > 1 ? "s" : ""}`;
+    `Service: <strong>${escapeHtml(t ? t.name : tier)}</strong> · ` +
+    `<strong>${price} USDC</strong> · ${count} address target${count > 1 ? "s" : ""}`;
 
   // In free mode, allow skipping payment to get a free local preview.
   els.paySkip.hidden = state.paymentMode !== "free";
@@ -480,7 +473,7 @@ async function runOrder(order, payment) {
     { key: "delivered", label: "Report ready" },
   ];
   const localSteps = [
-    { key: "audit", label: "Auditing the wallet (read-only)" },
+    { key: "audit", label: "Auditing the address target (read-only)" },
     { key: "delivered", label: "Report ready" },
   ];
   const activeSteps = method === "cap" ? capSteps : method === "metamask" ? mmSteps : localSteps;

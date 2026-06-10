@@ -120,7 +120,7 @@ export function decideNegotiation(
 
 // ── Pricing (task 14.1, requirements 4.4 / 4.5 / 4.6) ──────────────────────────────────
 
-/** Per-tier USDC price: QUICK = 0.5, FULL = 2, MULTI = 5 (requirements 4.4–4.6). */
+/** Per-tier USDC price; the externally exposed single service currently uses FULL. */
 export function priceForTier(tier: Tier): number {
   return TIER_PRICE_USDC[tier];
 }

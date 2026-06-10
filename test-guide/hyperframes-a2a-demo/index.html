@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en" data-resolution="landscape">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #06140f;
+      }
+
+      body {
+        font-family: sans-serif;
+        color: #e8f5ef;
+      }
+
+      code,
+      pre,
+      .mono {
+        font-family: monospace;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          linear-gradient(rgba(34, 197, 94, 0.052) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(34, 197, 94, 0.052) 1px, transparent 1px),
+          radial-gradient(circle at 18% 18%, rgba(34, 197, 94, 0.11), transparent 32%),
+          #06140f;
+        background-size: 64px 64px, 64px 64px, 100% 100%, 100% 100%;
+      }
+
+      .hud {
+        position: absolute;
+        left: 64px;
+        right: 64px;
+        top: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #9fb6ae;
+        font-size: 22px;
+        z-index: 20;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: #e8f5ef;
+        font-weight: 740;
+      }
+
+      .mark {
+        width: 18px;
+        height: 18px;
+        background: #22c55e;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        padding: 120px 96px 72px;
+      }
+
+      .eyebrow {
+        color: #22c55e;
+        font-size: 24px;
+        font-weight: 740;
+        letter-spacing: 0;
+        margin-bottom: 24px;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 1260px;
+        font-size: 86px;
+        line-height: 1.04;
+        letter-spacing: 0;
+        font-weight: 780;
+      }
+
+      h2 {
+        max-width: 1420px;
+        font-size: 56px;
+        line-height: 1.08;
+        letter-spacing: 0;
+        margin-bottom: 30px;
+      }
+
+      .sub {
+        max-width: 1220px;
+        color: #c0d4cc;
+        font-size: 33px;
+        line-height: 1.34;
+        margin-top: 32px;
+      }
+
+      .pill-row {
+        display: flex;
+        gap: 18px;
+        margin-top: 52px;
+        flex-wrap: wrap;
+      }
+
+      .pill,
+      .badge,
+      .method-tag {
+        border-radius: 6px;
+        font-weight: 760;
+      }
+
+      .pill {
+        border: 1px solid #21483b;
+        background: #0b1f18;
+        color: #d9ece5;
+        padding: 16px 22px;
+        font-size: 24px;
+      }
+
+      .two-col {
+        display: grid;
+        grid-template-columns: 0.95fr 1.05fr;
+        gap: 34px;
+        margin-top: 36px;
+      }
+
+      .three-col,
+      .grid3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        margin-top: 34px;
+      }
+
+      .node,
+      .panel,
+      .result-card,
+      .terminal,
+      .browser,
+      .metric-card {
+        border: 1px solid #21483b;
+        background: rgba(11, 31, 24, 0.94);
+        border-radius: 8px;
+      }
+
+      .panel,
+      .metric-card {
+        padding: 28px;
+      }
+
+      .panel h3,
+      .metric-card h3 {
+        font-size: 34px;
+        line-height: 1.12;
+        margin-bottom: 18px;
+      }
+
+      .panel p,
+      .metric-card p {
+        color: #c4d7d0;
+        font-size: 25px;
+        line-height: 1.36;
+      }
+
+      .metric {
+        color: #22c55e;
+        font-size: 58px;
+        line-height: 1;
+        font-weight: 820;
+        margin-bottom: 18px;
+      }
+
+      .method {
+        min-height: 520px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .method-tag {
+        display: inline-flex;
+        align-self: flex-start;
+        padding: 10px 14px;
+        background: #0d7a3b;
+        color: #ffffff;
+        font-size: 21px;
+        margin-bottom: 24px;
+      }
+
+      .cmd {
+        display: block;
+        color: #dceee7;
+        background: #071610;
+        border: 1px solid #21483b;
+        border-radius: 6px;
+        padding: 18px;
+        margin-top: 22px;
+        font-size: 22px;
+        line-height: 1.42;
+        overflow-wrap: anywhere;
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: 1fr 70px 1fr 70px 1fr 70px 1fr;
+        align-items: center;
+        gap: 18px;
+        margin-top: 48px;
+      }
+
+      .node {
+        height: 252px;
+        padding: 28px;
+      }
+
+      .node-title {
+        color: #e8f5ef;
+        font-size: 32px;
+        font-weight: 760;
+        margin-bottom: 18px;
+      }
+
+      .node-copy {
+        color: #b5c9c1;
+        font-size: 24px;
+        line-height: 1.35;
+      }
+
+      .arrow {
+        color: #22c55e;
+        font-size: 44px;
+        text-align: center;
+      }
+
+      .terminal {
+        margin-top: 32px;
+        padding: 28px;
+        height: 570px;
+      }
+
+      .line {
+        display: grid;
+        grid-template-columns: 230px 1fr;
+        gap: 24px;
+        color: #d6e7e0;
+        font-size: 24px;
+        line-height: 1.55;
+        border-bottom: 1px solid rgba(33, 72, 59, 0.55);
+        padding: 10px 0;
+      }
+
+      .line:last-child {
+        border-bottom: 0;
+      }
+
+      .tag {
+        color: #22c55e;
+        font-weight: 760;
+      }
+
+      .result-card {
+        min-height: 565px;
+        padding: 28px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 16px;
+        color: #ffffff;
+        font-size: 22px;
+        font-weight: 820;
+        margin-bottom: 26px;
+      }
+
+      .official {
+        background: #0d7a3b;
+      }
+
+      .safe {
+        background: #036984;
+      }
+
+      .caution {
+        background: #8a4d00;
+      }
+
+      .card-title {
+        font-size: 32px;
+        line-height: 1.15;
+        font-weight: 760;
+        margin-bottom: 18px;
+      }
+
+      .address {
+        color: #9fb6ae;
+        font-size: 19px;
+        overflow-wrap: anywhere;
+        margin-bottom: 24px;
+      }
+
+      .facts {
+        display: grid;
+        gap: 15px;
+        color: #cfe2da;
+        font-size: 23px;
+        line-height: 1.33;
+      }
+
+      .muted {
+        color: #9fb6ae;
+      }
+
+      .browser {
+        height: 710px;
+        margin-top: 24px;
+        overflow: hidden;
+        background: #071610;
+      }
+
+      .report-scroll {
+        height: 638px;
+        will-change: transform;
+      }
+
+      .browser-bar {
+        height: 72px;
+        border-bottom: 1px solid #21483b;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 0 22px;
+        color: #9fb6ae;
+        font-size: 21px;
+      }
+
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #44665a;
+      }
+
+      .urlbar {
+        flex: 1;
+        border: 1px solid #21483b;
+        background: #0b1f18;
+        color: #b7f7ce;
+        border-radius: 6px;
+        padding: 12px 16px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+
+      .report-body {
+        padding: 28px;
+        display: grid;
+        grid-template-columns: 0.9fr 1.1fr;
+        gap: 24px;
+        min-height: 900px;
+      }
+
+      .report-main {
+        border: 1px solid #21483b;
+        background: #0b1f18;
+        border-radius: 8px;
+        padding: 26px;
+        min-height: 540px;
+      }
+
+      .report-side {
+        display: grid;
+        gap: 18px;
+      }
+
+      .report-title {
+        font-size: 42px;
+        font-weight: 780;
+        margin-bottom: 18px;
+      }
+
+      .score {
+        display: flex;
+        align-items: flex-end;
+        gap: 18px;
+        margin: 28px 0;
+      }
+
+      .score-number {
+        color: #22c55e;
+        font-size: 96px;
+        font-weight: 840;
+        line-height: 0.9;
+      }
+
+      .score-number.safe-score {
+        color: #38bdf8;
+      }
+
+      .score-number.caution-score {
+        color: #f59e0b;
+      }
+
+      .score-label {
+        color: #cfe2da;
+        font-size: 28px;
+      }
+
+      .row {
+        border: 1px solid #21483b;
+        border-radius: 8px;
+        background: #0b1f18;
+        padding: 18px;
+        color: #cfe2da;
+        font-size: 22px;
+        line-height: 1.32;
+      }
+
+      .json {
+        white-space: pre-wrap;
+        color: #b7f7ce;
+        font-size: 20px;
+        line-height: 1.35;
+      }
+
+      .url {
+        color: #9ee8bd;
+        overflow-wrap: anywhere;
+      }
+
+      .foot {
+        position: absolute;
+        left: 96px;
+        right: 96px;
+        bottom: 42px;
+        display: flex;
+        justify-content: space-between;
+        color: #8fa89f;
+        font-size: 19px;
+        z-index: 20;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="192"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="hud">
+        <div class="brand"><span class="mark"></span><span>CROO Web3 Address Intel Agent</span></div>
+        <div>Function intro + recorded execution evidence</div>
+      </div>
+
+      <section
+        id="scene-title"
+        class="clip scene"
+        data-start="0"
+        data-duration="12"
+        data-track-index="1"
+      >
+        <div class="eyebrow">Competition feature introduction</div>
+        <h1>Know the risk of a counterparty address before you transact.</h1>
+        <p class="sub">
+          CROO Address Intel Agent checks Ethereum and compatible-chain addresses, identifies
+          official contracts when evidence supports it, grades risk, and returns a shareable report.
+        </p>
+        <div class="pill-row">
+          <div class="pill">Official address signals</div>
+          <div class="pill">EOA and contract risk</div>
+          <div class="pill">LLM evidence review</div>
+          <div class="pill">Report URL delivery</div>
+        </div>
+      </section>
+
+      <section
+        id="scene-problem"
+        class="clip scene"
+        data-start="12"
+        data-duration="16"
+        data-track-index="2"
+      >
+        <div class="eyebrow">What the agent solves</div>
+        <h2>The user supplies a transaction counterparty or any address. The agent answers: should I trust it?</h2>
+        <div class="three-col">
+          <div class="metric-card">
+            <div class="metric">1</div>
+            <h3>Collect evidence</h3>
+            <p>Read-only RPC and Etherscan calls inspect address type, contract metadata, transactions, balances, approvals, and warnings.</p>
+          </div>
+          <div class="metric-card">
+            <div class="metric">2</div>
+            <h3>Ask the LLM</h3>
+            <p>The prompt receives the evidence log, not a hardcoded address list, and returns badge, verdict, risk, reasons, and cited fields.</p>
+          </div>
+          <div class="metric-card">
+            <div class="metric">3</div>
+            <h3>Deliver result</h3>
+            <p>The verdict is written back into JSON, A2A delivery, API response, and the web report page.</p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-methods"
+        class="clip scene"
+        data-start="28"
+        data-duration="20"
+        data-track-index="3"
+      >
+        <div class="eyebrow">Three supported calling modes</div>
+        <h2>Same intelligence engine, three ways to call it.</h2>
+        <div class="three-col">
+          <div class="panel method">
+            <div>
+              <div class="method-tag">A2A</div>
+              <h3>Agent-to-agent service</h3>
+              <p>CROO CAP negotiation, payment, provider audit, delivery, and report URL. This is the competition integration path.</p>
+            </div>
+            <code class="cmd mono">npm run requester:live -- 0x...</code>
+          </div>
+          <div class="panel method">
+            <div>
+              <div class="method-tag">API</div>
+              <h3>HTTP order endpoint</h3>
+              <p>Backend clients submit an address list and receive structured JSON for wallet screens, bots, or risk gates.</p>
+            </div>
+            <code class="cmd mono">POST /api/orders<br />{ "walletAddresses": ["0x..."] }</code>
+          </div>
+          <div class="panel method">
+            <div>
+              <div class="method-tag">WEB</div>
+              <h3>Browser report flow</h3>
+              <p>Users paste an address, run analysis, and open a human-readable report with badge, evidence, and next actions.</p>
+            </div>
+            <code class="cmd mono">https://intel.say2agent.com/report?file=&lt;orderId&gt;.json</code>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-architecture"
+        class="clip scene"
+        data-start="48"
+        data-duration="18"
+        data-track-index="4"
+      >
+        <div class="eyebrow">System architecture</div>
+        <h2>The original A2A payment flow stays intact; intelligence is added after payment is locked.</h2>
+        <div class="flow">
+          <div class="node">
+            <div class="node-title">Requester Agent</div>
+            <div class="node-copy">Submits the target address and pays the single CROO service.</div>
+          </div>
+          <div class="arrow">></div>
+          <div class="node">
+            <div class="node-title">CROO CAP</div>
+            <div class="node-copy">Locks escrow, emits order events, stores the provider deliverable.</div>
+          </div>
+          <div class="arrow">></div>
+          <div class="node">
+            <div class="node-title">Intel Provider</div>
+            <div class="node-copy">Fetches chain evidence, calls LLM skill, persists result JSON.</div>
+          </div>
+          <div class="arrow">></div>
+          <div class="node">
+            <div class="node-title">Report Page</div>
+            <div class="node-copy">Shows badge, risk level, official marker, evidence, and URL.</div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-a2a-run"
+        class="clip scene"
+        data-start="66"
+        data-duration="18"
+        data-track-index="5"
+      >
+        <div class="eyebrow">Recorded A2A execution</div>
+        <h2>Live CAP communication was run once and saved as reproducible evidence.</h2>
+        <div class="terminal mono">
+          <div class="line"><span class="tag">provider</span><span>AddressIntelProvider listening for CAP events</span></div>
+          <div class="line"><span class="tag">negotiate</span><span>Requester creates negotiation for service 0b92c0b1-cd83-4854-b82e-69ed7d2497f1</span></div>
+          <div class="line"><span class="tag">pay</span><span>CAP order is paid; escrow is locked before analysis starts</span></div>
+          <div class="line"><span class="tag">audit</span><span>Provider checks RPC, Etherscan, contract metadata, activity, approvals, and warnings</span></div>
+          <div class="line"><span class="tag">llm</span><span>LLM classifies evidence and writes addressIntel[].aiVerdict back into final JSON</span></div>
+          <div class="line"><span class="tag">deliver</span><span>Requester receives Markdown, schema JSON, and report URL</span></div>
+          <div class="line"><span class="tag">persist</span><span>result/&lt;orderId&gt;.json, requester live logs, and provider logs are saved</span></div>
+        </div>
+      </section>
+
+      <section
+        id="scene-llm"
+        class="clip scene"
+        data-start="84"
+        data-duration="18"
+        data-track-index="6"
+      >
+        <div class="eyebrow">LLM is not a decorative summary</div>
+        <h2>The model output becomes the final badge and risk classification.</h2>
+        <div class="two-col">
+          <div class="panel">
+            <h3>Evidence sent to LLM</h3>
+            <code class="cmd mono">contractMeta: { name: "SwapRouter", verified: true }<br />walletActivity: { txCount: 10000 }<br />approvals: []<br />scannerWarnings: []</code>
+            <p>The prompt asks for verdict, risk level, official flag, blacklist flag, reasons, authorization risks, and evidence used.</p>
+          </div>
+          <div class="panel">
+            <h3>Guardrail for official labels</h3>
+            <code class="cmd mono">EOA official=true is rejected unless the evidence log has an explicit source or explorer label.</code>
+            <p>This prevents the model from marking a famous wallet as official just from memory or public reputation.</p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-report-official"
+        class="clip scene"
+        data-start="102"
+        data-duration="30"
+        data-track-index="7"
+      >
+        <div class="eyebrow">Report page 1: official contract</div>
+        <h2>The report marks official only when evidence supports it.</h2>
+        <div class="browser">
+          <div class="browser-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <div class="urlbar mono">https://intel.say2agent.com/report?file=e149b86a-ca7d-447f-8763-25a9795b7f63.json</div>
+          </div>
+          <div id="official-scroll" class="report-scroll" data-layout-allow-overflow>
+            <div class="report-body">
+              <div class="report-main">
+                <div class="badge official">OFFICIAL</div>
+                <div class="report-title">Uniswap V3 SwapRouter</div>
+                <div class="address mono">0xE592427A0AEce92De3Edee1F18E0157C05861564</div>
+                <div class="score">
+                  <div class="score-number">94</div>
+                  <div class="score-label">low-risk health score</div>
+                </div>
+                <div class="facts">
+                  <div><span class="muted">Verdict:</span> OFFICIAL</div>
+                  <div><span class="muted">Risk:</span> LOW</div>
+                  <div><span class="muted">Official marker:</span> true</div>
+                  <div><span class="muted">How we prove it:</span> the evidence log shows contract code, verified source, canonical SwapRouter name, deployment metadata, and long transaction history.</div>
+                  <div><span class="muted">Why it matters:</span> a user can distinguish a protocol router from a lookalike EOA or unverified contract before sending a transaction.</div>
+                </div>
+              </div>
+              <div class="report-side">
+                <div class="row"><strong>Official evidence</strong><br />The official badge is supported by `contractMeta.name = SwapRouter`, `verified = true`, `isContract = true`, and high observed transaction volume.</div>
+                <div class="row"><strong>LLM Evidence Verdict</strong><br />The LLM cites the raw evidence fields and returns badge, verdict, risk level, reasons, authorization risks, and evidence used.</div>
+                <div class="row"><strong>Structured JSON</strong><pre class="json">addressStanding: {
+  verdict: "OFFICIAL",
+  badge: { level: "OFFICIAL" },
+  official: true
+}
+addressIntel[0].aiVerdict: {
+  riskLevel: "LOW"
+}</pre></div>
+                <div class="row"><strong>Operator action</strong><br />Proceed only after checking that this exact address is the intended Uniswap router for the transaction path.</div>
+                <div class="row"><strong>Report deliverable</strong><br />The same fields are visible through the web report, returned through A2A JSON, and available to API callers.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-report-wallet"
+        class="clip scene"
+        data-start="132"
+        data-duration="30"
+        data-track-index="8"
+      >
+        <div class="eyebrow">Report page 2: normal high-activity wallet</div>
+        <h2>A famous or active EOA is not treated as official without source evidence.</h2>
+        <div class="browser">
+          <div class="browser-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <div class="urlbar mono">https://intel.say2agent.com/report?file=02528134-5c63-4dc9-8110-938fa59568c6.json</div>
+          </div>
+          <div id="wallet-scroll" class="report-scroll" data-layout-allow-overflow>
+            <div class="report-body">
+              <div class="report-main">
+                <div class="badge safe">SAFE</div>
+                <div class="report-title">High-activity EOA wallet</div>
+                <div class="address mono">0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045</div>
+                <div class="score">
+                  <div class="score-number safe-score">88</div>
+                  <div class="score-label">low-risk health score</div>
+                </div>
+                <div class="facts">
+                  <div><span class="muted">Verdict:</span> LIKELY_SAFE</div>
+                  <div><span class="muted">Risk:</span> LOW</div>
+                  <div><span class="muted">Official marker:</span> false</div>
+                  <div><span class="muted">Why not official:</span> the address is an EOA and the fetched evidence does not contain an explicit official source or explorer label.</div>
+                  <div><span class="muted">User meaning:</span> this can be a normal counterparty, but the user still needs to verify intent and address ownership outside the model.</div>
+                </div>
+              </div>
+              <div class="report-side">
+                <div class="row"><strong>Evidence gate</strong><br />The LLM may identify low risk, but the official badge is withheld for EOAs unless the evidence log contains an official-source signal.</div>
+                <div class="row"><strong>Normal wallet signals</strong><br />The report shows EOA type, observed transaction history, no contract-code risk, and no explicit blacklist or scanner warning in the saved evidence.</div>
+                <div class="row"><strong>Structured JSON</strong><pre class="json">addressStanding: {
+  verdict: "LIKELY_SAFE",
+  badge: { level: "SAFE" },
+  official: false
+}
+addressIntel[0].aiVerdict: {
+  riskLevel: "LOW"
+}</pre></div>
+                <div class="row"><strong>Operator action</strong><br />Continue only if the address exactly matches the intended recipient and the transaction context makes sense.</div>
+                <div class="row"><strong>Why this matters</strong><br />The agent separates "low apparent risk" from "official", which is important for preventing overconfident UI badges.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="scene-report-risk"
+        class="clip scene"
+        data-start="162"
+        data-duration="30"
+        data-track-index="9"
+      >
+        <div class="eyebrow">Report page 3: caution case</div>
+        <h2>Risky context is shown with a caution badge and evidence-based wording.</h2>
+        <div class="browser">
+          <div class="browser-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <div class="urlbar mono">https://intel.say2agent.com/report?file=ce3ce2c9-f62d-44cf-904a-baa066933aea.json</div>
+          </div>
+          <div id="risk-scroll" class="report-scroll" data-layout-allow-overflow>
+            <div class="report-body">
+              <div class="report-main">
+                <div class="badge caution">CAUTION</div>
+                <div class="report-title">TornadoRouter association</div>
+                <div class="address mono">0xD90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b</div>
+                <div class="score">
+                  <div class="score-number caution-score">58</div>
+                  <div class="score-label">caution health score</div>
+                </div>
+                <div class="facts">
+                  <div><span class="muted">Verdict:</span> CAUTION</div>
+                  <div><span class="muted">Risk:</span> MEDIUM</div>
+                  <div><span class="muted">Official marker:</span> false</div>
+                  <div><span class="muted">Risk source:</span> TornadoRouter name, mixer-adjacent context, high inbound activity, and regulatory sensitivity.</div>
+                  <div><span class="muted">Careful wording:</span> the report warns the user but does not claim blacklist status when the evidence does not prove it.</div>
+                </div>
+              </div>
+              <div class="report-side">
+                <div class="row"><strong>Risk explanation</strong><br />The risk is not just "unknown contract"; the evidence points to mixer-adjacent infrastructure and transaction patterns that deserve manual review.</div>
+                <div class="row"><strong>Careful classification</strong><br />The report flags caution from the evidence, while avoiding an unsupported blacklist claim when the data does not prove it.</div>
+                <div class="row"><strong>Structured JSON</strong><pre class="json">addressStanding: {
+  verdict: "CAUTION",
+  badge: { level: "CAUTION" },
+  official: false,
+  blacklisted: false
+}
+addressIntel[0].aiVerdict: {
+  transactionRisks: [...]
+}</pre></div>
+                <div class="row"><strong>Operator action</strong><br />Pause, verify the recipient through an independent trusted source, and avoid approvals or transfers until the purpose is clear.</div>
+                <div class="row"><strong>Platform value</strong><br />A2A clients, API consumers, and the web report all receive the same caution badge and explanation.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="foot">
+        <span>A2A + API + Web version are backed by the same evidence-based address intel engine</span>
+        <span>Artifacts: report URLs, result/*.json, requester logs, provider logs, HyperFrames video</span>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.from("#scene-title h1", { opacity: 0, y: 36, duration: 0.8 }, 0.2)
+        .from("#scene-title .sub", { opacity: 0, y: 24, duration: 0.6 }, 0.9)
+        .from("#scene-title .pill", { opacity: 0, y: 18, stagger: 0.09, duration: 0.45 }, 1.5)
+        .from("#scene-problem .metric-card", { opacity: 0, y: 28, stagger: 0.16, duration: 0.55 }, 12.8)
+        .from("#scene-methods .method", { opacity: 0, y: 30, stagger: 0.18, duration: 0.55 }, 28.8)
+        .from("#scene-architecture .node", { opacity: 0, y: 26, stagger: 0.12, duration: 0.5 }, 48.6)
+        .from("#scene-architecture .arrow", { opacity: 0, x: -14, stagger: 0.12, duration: 0.35 }, 49.2)
+        .from("#scene-a2a-run .line", { opacity: 0, x: -24, stagger: 0.17, duration: 0.34 }, 66.7)
+        .from("#scene-llm .panel", { opacity: 0, y: 28, stagger: 0.16, duration: 0.5 }, 84.7)
+        .from("#scene-report-official .browser", { opacity: 0, y: 34, duration: 0.65 }, 102.8)
+        .from("#scene-report-official .report-side .row", { opacity: 0, x: 28, stagger: 0.14, duration: 0.45 }, 104.0)
+        .to("#official-scroll", { y: -245, duration: 18, ease: "none" }, 110.0)
+        .from("#scene-report-wallet .browser", { opacity: 0, y: 34, duration: 0.65 }, 132.8)
+        .from("#scene-report-wallet .report-side .row", { opacity: 0, x: 28, stagger: 0.14, duration: 0.45 }, 134.0)
+        .to("#wallet-scroll", { y: -245, duration: 18, ease: "none" }, 140.0)
+        .from("#scene-report-risk .browser", { opacity: 0, y: 34, duration: 0.65 }, 162.8)
+        .from("#scene-report-risk .report-side .row", { opacity: 0, x: 28, stagger: 0.14, duration: 0.45 }, 164.0)
+        .to("#risk-scroll", { y: -245, duration: 18, ease: "none" }, 170.0);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

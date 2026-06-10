@@ -21,13 +21,11 @@ describe("portal config (unified single-process model)", () => {
     expect(loadPortalConfig({ PORTAL_PAYMENT_MODE: "PAID" }).paymentMode).toBe("paid");
   });
 
-  it("maps configured Service_IDs into the catalog (informational)", () => {
+  it("maps the configured Service_ID into the single-service catalog", () => {
     const cfg = loadPortalConfig({
-      SERVICE_ID_QUICK: "svc-q",
-      SERVICE_ID_FULL: "svc-f",
-      SERVICE_ID_MULTI: "svc-m",
+      SERVICE_ID: "svc-address-intel",
     });
-    expect(cfg.serviceIds).toEqual({ QUICK: "svc-q", FULL: "svc-f", MULTI: "svc-m" });
+    expect(cfg.serviceIds).toEqual({ FULL: "svc-address-intel" });
   });
 
   it("parses PORTAL_PORT and rejects an invalid port", () => {

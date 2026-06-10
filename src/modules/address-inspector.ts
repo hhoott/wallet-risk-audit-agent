@@ -6,8 +6,8 @@
  * Step 2: gather TYPE-SPECIFIC facts:
  *           - EOA      → defer to the full wallet audit (handled by the orchestrator).
  *           - ERC20    → token security signals (owner, mintable, pausable, blacklist) + rule/meta.
- *           - ERC721/1155 → collection legitimacy (official label, verified, age) + meta.
- *           - CONTRACT → protocol meta + curated label + rule.
+ *           - ERC721/1155 → collection metadata, verified status, source labels, age.
+ *           - CONTRACT → protocol metadata, source labels, source verification.
  * Step 3: the caller routes those facts to a TYPE-SPECIFIC LLM skill (analyzeByType) for a focused
  *         assessment.
  *
@@ -28,13 +28,13 @@ export interface AddressInspection {
   address: Address;
   /** Detected on-chain type. */
   type: AddressType;
-  /** Base legitimacy / risk verdict (always present, reuses Address_Intel). */
+  /** Base legitimacy / risk verdict used as a non-AI fallback. */
   intel: AddressIntelResult;
   /** Token security signals — present only for ERC-20 token contracts. */
   token?: TokenContractInfo;
   /**
-   * The fact bundle handed to the type-specific LLM skill. Shape varies by type but is always a
-   * plain JSON object the model can read.
+   * The raw observation bundle handed to the LLM. Shape varies by type but avoids final
+   * official/risk verdict fields so the model classifies from evidence instead of echoing a label.
    */
   facts: Record<string, unknown>;
 }
@@ -43,6 +43,7 @@ export interface AddressInspection {
 function neutralMeta(address: Address): ContractMeta {
   return {
     contract: address,
+    name: null,
     verified: true,
     deployedAt: null,
     txCount: Number.MAX_SAFE_INTEGER,
@@ -127,14 +128,15 @@ export class AddressInspector {
     const facts: Record<string, unknown> = {
       address,
       type,
-      verdict: intel.verdict,
-      official: intel.official,
-      blacklisted: intel.blacklisted,
-      label: intel.label,
-      verified: meta.verified,
-      deployedAt: meta.deployedAt,
-      txCount: meta.txCount === Number.MAX_SAFE_INTEGER ? null : meta.txCount,
-      matchedFeatures: intel.matchedFeatures,
+      contractMeta: {
+        contractName: meta.name ?? null,
+        verified: meta.verified,
+        deployedAt: meta.deployedAt,
+        txCount: meta.txCount === Number.MAX_SAFE_INTEGER ? null : meta.txCount,
+        audited: meta.audited,
+        isContract: meta.isContract,
+      },
+      scannerWarnings: intel.matchedFeatures,
     };
 
     const inspection: AddressInspection = { address, type, intel, facts };

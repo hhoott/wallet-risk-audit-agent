@@ -15,7 +15,7 @@
  * All values are injected from the environment — never hard-coded, never logged.
  */
 
-import type { Tier } from "../config.js";
+import { DEFAULT_SERVICE_TIER, type Tier } from "../config.js";
 
 /** Payment-callback gate. See module docs. */
 export type PaymentMode = "paid" | "free";
@@ -35,8 +35,8 @@ export interface PortalConfig {
   /** Base RPC URL used to verify MetaMask USDC payments (defaults to the public Base RPC). */
   baseRpcUrl?: string;
   /**
-   * Target Service_IDs of the agent's tiers. Used to map a tier → the CAP Service the user's
-   * Requester key negotiates against when paying. Surfaced in /api/tiers too.
+   * Target Service_ID of the single external CROO Service, stored under the default internal tier
+   * for compatibility with the existing order pipeline.
    */
   serviceIds: Partial<Record<Tier, string>>;
   /** Per-audit / per-checkout timeout (ms). */
@@ -78,9 +78,8 @@ export function loadPortalConfig(env: NodeJS.ProcessEnv = process.env): PortalCo
     (env.PORTAL_PAYMENT_MODE ?? "").trim().toLowerCase() === "paid" ? "paid" : "free";
 
   const serviceIds: Partial<Record<Tier, string>> = {};
-  if (env.SERVICE_ID_QUICK) serviceIds.QUICK = env.SERVICE_ID_QUICK;
-  if (env.SERVICE_ID_FULL) serviceIds.FULL = env.SERVICE_ID_FULL;
-  if (env.SERVICE_ID_MULTI) serviceIds.MULTI = env.SERVICE_ID_MULTI;
+  const serviceId = env.SERVICE_ID ?? env.SERVICE_ID_FULL ?? env.SERVICE_ID_QUICK ?? env.SERVICE_ID_MULTI;
+  if (serviceId) serviceIds[DEFAULT_SERVICE_TIER] = serviceId;
 
   const orderTimeoutMs = Number.parseInt(env.PORTAL_ORDER_TIMEOUT_MS ?? "", 10);
 

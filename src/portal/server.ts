@@ -4,7 +4,7 @@
  * Endpoints:
  *   GET  /                 → the single-page portal (responsive: phone + desktop).
  *   GET  /assets/*         → static CSS / JS for the page.
- *   GET  /api/tiers        → the tiers (name, price, what-you-get) + the payment mode.
+ *   GET  /api/tiers        → the single service (name, price, what-you-get) + payment mode.
  *   POST /api/orders       → place an order. Two ways to call it (same core logic):
  *                              • JSON (API):   returns the final JSON result in one response.
  *                              • SSE (web UI): set { stream: true } to receive step-by-step progress
@@ -28,8 +28,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, normalize } from "node:path";
 
 import type { Tier } from "../config.js";
-import { TIER_PRICE_USDC } from "../config.js";
-import { SERVICE_CATALOG } from "../services.js";
+import { DEFAULT_SERVICE_TIER, TIER_PRICE_USDC } from "../config.js";
+import { getServiceMetadata } from "../services.js";
 import { validateAddresses } from "../modules/address-validator.js";
 import { CHAIN_ORDER, SUPPORTED_CHAINS, resolveChainKey, type ChainKey } from "../chains.js";
 import type { PortalConfig } from "./config.js";
@@ -44,43 +44,36 @@ import {
 import { MetaMaskPaymentVerifier, BASE_USDC_ADDRESS } from "./metamask-payment.js";
 import { DeliverableType } from "@croo-network/sdk";
 import { type CapClient, extractTxHash } from "../cap/provider.js";
+import {
+  readResultJson,
+  type ResultStoreOptions,
+} from "../result-store.js";
 
-const TIER_ORDER: readonly Tier[] = ["QUICK", "FULL", "MULTI"];
+const TIER_ORDER: readonly Tier[] = [DEFAULT_SERVICE_TIER];
 
 /**
- * A short, user-facing summary of what each tier delivers (shown on the cards). These mirror the
- * actual tier routing in the orchestrator + report trimming: QUICK is a lean subset (no AI, no
- * transaction history); FULL adds the full analysis + annotated history; MULTI adds the multi-wallet
- * fan-out + counterparty deep-dive. AI lines are added separately only when an LLM is configured.
+ * A short, user-facing summary of what the single service delivers (shown on the card). AI lines
+ * are added separately only when an LLM is configured.
  */
 const TIER_HIGHLIGHTS: Record<Tier, string[]> = {
-  QUICK: [
-    "Address type detection (wallet / token / NFT / contract)",
-    "Wallet Health Score (0–100) + risk level",
-    "Unlimited (infinite) approval detection",
-    "Known high-risk contract interactions",
-  ],
   FULL: [
-    "Everything in Quick",
-    "Full approval scan + suspicious / high-risk contract classification",
+    "Wallet / token / NFT / contract address type detection",
+    "Official / known-service badge and blacklist checks",
+    "Address Health Score (0-100) + risk level",
+    "Approval exposure and suspicious contract classification",
     "Asset distribution & USD valuation",
     "Failed / abnormal transaction detection",
-    "Annotated transaction history (each counterparty labelled official / risky / contract)",
+    "Annotated transaction counterparties",
+    "One or many addresses in the same request",
     "Prioritized revocation links",
   ],
-  MULTI: [
-    "Everything in Full, per wallet",
-    "Up to 50 wallets in one order",
-    "Longer history window (365 days)",
-    "Combined multi-wallet summary",
-    "Counterparty deep-dive (top peers each typed & risk-rated; token/contract owner profiled)",
-  ],
+  QUICK: [],
+  MULTI: [],
 };
 
 /** AI-powered highlights, appended per tier ONLY when an LLM is configured (otherwise omitted). */
 const TIER_AI_HIGHLIGHTS: Partial<Record<Tier, string[]>> = {
   FULL: ["AI risk explanation + remediation plan", "Type-specific AI assessment of the address"],
-  MULTI: ["AI assessment of each analyzed counterparty"],
 };
 
 /** The directory holding the static frontend assets (resolved relative to this module). */
@@ -133,6 +126,26 @@ async function sendStatic(res: ServerResponse, relativePath: string): Promise<vo
   }
 }
 
+/** Serve a generated report JSON file from result/. */
+async function sendResultFile(
+  res: ServerResponse,
+  fileName: string,
+  options: ResultStoreOptions | undefined,
+): Promise<void> {
+  try {
+    const data = await readResultJson(fileName, options);
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Length": data.length,
+      "Cache-Control": "no-store",
+    });
+    res.end(data);
+  } catch (err) {
+    const unsafe = err instanceof Error && err.message.startsWith("Unsafe result file name");
+    sendJson(res, unsafe ? 400 : 404, { error: unsafe ? "Invalid result file" : "Result not found" });
+  }
+}
+
 /** Read and parse a JSON request body with a hard size cap. */
 async function readJsonBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -165,10 +178,10 @@ async function readJsonBody(req: IncomingMessage, maxBytes = 64 * 1024): Promise
 
 // ── API handlers ─────────────────────────────────────────────────────────────────────────
 
-/** Build the tier catalog payload: pricing, highlights, and the payment mode. */
+/** Build the single-service catalog payload: pricing, highlights, and the payment mode. */
 function buildTiersPayload(config: PortalConfig, aiEnabled: boolean): unknown {
   const tiers = TIER_ORDER.map((tier) => {
-    const meta = SERVICE_CATALOG[tier];
+    const meta = getServiceMetadata(tier);
     // Only advertise AI lines when an LLM is actually configured (don't promise what we can't do).
     const aiLines = aiEnabled ? (TIER_AI_HIGHLIGHTS[tier] ?? []) : [];
     return {
@@ -177,8 +190,8 @@ function buildTiersPayload(config: PortalConfig, aiEnabled: boolean): unknown {
       description: meta.description,
       priceUsdc: TIER_PRICE_USDC[tier],
       highlights: [...TIER_HIGHLIGHTS[tier], ...aiLines],
-      multi: tier === "MULTI",
-      // The agent audits in-process, so every tier is always bookable from the web/API.
+      multi: true,
+      // The agent audits in-process, so the service is always bookable from the web/API.
       available: true,
       serviceId: config.serviceIds[tier],
     };
@@ -255,10 +268,10 @@ function parseOrderRequest(body: unknown):
     stream?: unknown;
   };
 
-  if (typeof tier !== "string" || !TIER_ORDER.includes(tier as Tier)) {
-    return { error: "Field 'tier' must be one of QUICK, FULL, MULTI." };
+  if (tier !== undefined && (typeof tier !== "string" || !TIER_ORDER.includes(tier as Tier))) {
+    return { error: "Field 'tier' must be omitted or set to FULL for the single service." };
   }
-  const typedTier = tier as Tier;
+  const typedTier = (typeof tier === "string" ? tier : DEFAULT_SERVICE_TIER) as Tier;
 
   // Resolve the audited chain (default ethereum). Reject an explicitly unsupported chain.
   const chainKey = resolveChainKey(typeof chain === "string" ? chain : undefined);
@@ -268,7 +281,7 @@ function parseOrderRequest(body: unknown):
     };
   }
 
-  // Accept either a single address or a list; MULTI expects a list but a single is allowed too.
+  // Accept either a single address or a list. The single external service supports both.
   let rawAddresses: string[];
   if (Array.isArray(walletAddresses)) {
     rawAddresses = walletAddresses.filter((a): a is string => typeof a === "string");
@@ -284,10 +297,9 @@ function parseOrderRequest(body: unknown):
   }
   if (validation.pendingAddresses.length === 0) {
     const firstError = validation.results.find((r) => !r.valid)?.error;
-    return { error: firstError ?? "No valid wallet address was provided." };
+    return { error: firstError ?? "No valid EVM address target was provided." };
   }
-  const addresses =
-    typedTier === "MULTI" ? validation.pendingAddresses : [validation.pendingAddresses[0]!];
+  const addresses = validation.pendingAddresses;
 
   const key = typeof crooKey === "string" && crooKey.trim().length > 0 ? crooKey.trim() : undefined;
   const tx =
@@ -350,6 +362,8 @@ export interface PortalServerDeps {
   capClient?: CapClient;
   /** Whether AI insight is active (an LLM is configured). Drives the AI tier highlights. */
   aiEnabled?: boolean;
+  /** Directory/base URL options for generated result JSON files. */
+  resultStore?: ResultStoreOptions;
   /** Logger; defaults to console. */
   logger?: { info(m: string): void; warn(m: string): void; error(m: string): void };
 }
@@ -371,6 +385,7 @@ interface ServerCtx {
   paymentVerifier: PaymentVerifier | undefined;
   capClient: CapClient | undefined;
   aiEnabled: boolean;
+  resultStore: ResultStoreOptions | undefined;
   logger: NonNullable<PortalServerDeps["logger"]>;
 }
 
@@ -398,6 +413,7 @@ export function createPortalServer(deps: PortalServerDeps) {
         })),
     paymentVerifier: verifier,
     aiEnabled: deps.aiEnabled ?? false,
+    resultStore: deps.resultStore,
     logger: deps.logger ?? defaultLogger(),
     capClient: deps.capClient,
   };
@@ -445,6 +461,10 @@ async function handleRequest(
     }
     if (path === "/report" || path === "/report.html") {
       await sendStatic(res, "report.html");
+      return;
+    }
+    if (path.startsWith("/result/")) {
+      await sendResultFile(res, decodeURIComponent(path.slice("/result/".length)), ctx.resultStore);
       return;
     }
     if (path.startsWith("/assets/")) {

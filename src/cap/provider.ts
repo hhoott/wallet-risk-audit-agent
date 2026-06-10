@@ -28,6 +28,8 @@ import {
   isUnauthorized,
   isInsufficientBalance,
 } from "@croo-network/sdk";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 
 import type { RuntimeConfig, Tier } from "../config.js";
 import type {
@@ -37,6 +39,7 @@ import type {
   MultiWalletReport,
   SettlementRecord,
   WalletActivity,
+  AddressStanding,
 } from "../models.js";
 import {
   decideNegotiation,
@@ -52,6 +55,15 @@ import type {
 } from "../orchestrator.js";
 import type { AddressIntelOutcome } from "../modules/address-intel.js";
 import type { AddressInspection } from "../modules/address-inspector.js";
+import {
+  buildResultUrls,
+  resultFileNameForOrder,
+  writeResultJson,
+  type ResultStoreOptions,
+  type StoredReportPayload,
+  RESULT_DIR_NAME,
+} from "../result-store.js";
+import type { AuditSkillSet, LlmAddressVerdict } from "../llm/skills.js";
 
 // ── Minimal CAP client surface (exactly the SDK methods this layer uses) ────────────────
 
@@ -86,7 +98,7 @@ export interface CapDeliverRequest {
  *
  * Events carry only ids, so the full Negotiation / Order objects are fetched on demand (per the
  * cap-protocol.md appendix): `getNegotiation` yields `serviceId` + `requirements`; `getOrder`
- * yields the payer wallet and (by convention) the `requirements` JSON carrying wallet addresses.
+ * yields the payer wallet and (by convention) the `requirements` JSON carrying address targets.
  */
 export interface CapClient {
   connectWebSocket(): Promise<CapEventStream>;
@@ -143,12 +155,31 @@ export const NOOP_LOGGER: CapLogger = {
   error: () => {},
 };
 
+function appendProviderLog(level: "info" | "warn" | "error", message: string): void {
+  try {
+    const dir = join(process.cwd(), RESULT_DIR_NAME);
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, "provider.log"), `[${new Date().toISOString()}] [${level}] ${message}\n`, "utf8");
+  } catch {
+    /* Logging to file is best-effort and must never break the Provider. */
+  }
+}
+
 /** A console-backed logger for the running Provider (prefixes lines so they are easy to grep). */
 export function createConsoleLogger(): CapLogger {
   return {
-    info: (m: string) => console.info(`[cap] ${m}`),
-    warn: (m: string) => console.warn(`[cap] ${m}`),
-    error: (m: string) => console.error(`[cap] ${m}`),
+    info: (m: string) => {
+      appendProviderLog("info", m);
+      console.info(`[cap] ${m}`);
+    },
+    warn: (m: string) => {
+      appendProviderLog("warn", m);
+      console.warn(`[cap] ${m}`);
+    },
+    error: (m: string) => {
+      appendProviderLog("error", m);
+      console.error(`[cap] ${m}`);
+    },
   };
 }
 
@@ -177,7 +208,7 @@ export function classifyError(err: unknown): string {
   if (isInsufficientBalance(err)) return "insufficient-balance";
   if (isNotFound(err)) return "not-found";
   if (isUnauthorized(err)) return "unauthorized";
-  if (err instanceof APIError) return `api-error(code=${err.code},status=${err.httpStatus})`;
+  if (err instanceof APIError) return `api-error(code=${err.code},status=${err.httpStatus},msg=${err.message})`;
   if (err instanceof Error) return err.message;
   return String(err);
 }
@@ -208,26 +239,196 @@ export interface AuditDeliverable {
   statuses: ModuleStatus[];
 }
 
+export interface A2aAddressIntelEntry {
+  address: Address;
+  standing: AddressStanding;
+  evidenceLog: unknown;
+  aiVerdict: LlmAddressVerdict;
+}
+
+function renderA2aLlmSummary(entries: readonly A2aAddressIntelEntry[] | undefined): string {
+  if (entries === undefined || entries.length === 0) return "";
+  const lines = ["## LLM Evidence Verdict"];
+  for (const entry of entries) {
+    const v = entry.aiVerdict;
+    lines.push("");
+    lines.push(`### ${entry.address}`);
+    lines.push(`- Badge: ${v.badge.label} (${v.badge.level})`);
+    lines.push(`- Verdict: ${v.verdict}`);
+    lines.push(`- Risk Level: ${v.riskLevel}`);
+    lines.push(`- Official: ${v.official}`);
+    lines.push(`- Blacklisted: ${v.blacklisted}`);
+    if (v.label !== undefined) lines.push(`- Label: ${v.label}`);
+    if (v.reasons.length > 0) {
+      lines.push("- Reasons:");
+      for (const reason of v.reasons.slice(0, 5)) lines.push(`  - ${reason}`);
+    }
+    if (v.approvalRisks.length > 0) {
+      lines.push("- Approval risks:");
+      for (const risk of v.approvalRisks.slice(0, 5)) lines.push(`  - ${risk}`);
+    }
+    if (v.transactionRisks.length > 0) {
+      lines.push("- Transaction risks:");
+      for (const risk of v.transactionRisks.slice(0, 5)) lines.push(`  - ${risk}`);
+    }
+    if (v.evidenceUsed.length > 0) {
+      lines.push(`- Evidence used: ${v.evidenceUsed.slice(0, 5).join("; ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** Convert rich internal report JSON into the simpler shape accepted by CROO's Schema builder. */
+export function normalizeForCapSchema(
+  structured: AuditReportStructured | MultiWalletReport,
+): Record<string, unknown> {
+  const out = { ...(structured as unknown as Record<string, unknown>) };
+
+  // Dashboard schema fields are required when declared. Keep null object fields as minimal objects.
+  if (out.assets === null || out.assets === undefined) out.assets = { totalUsd: 0, items: [] };
+  if (out.addressStanding === null || out.addressStanding === undefined) out.addressStanding = {};
+  for (const key of [
+    "approvals",
+    "contractRisks",
+    "txFindings",
+    "revokeAdvice",
+    "moduleStatuses",
+    "reports",
+  ]) {
+    const value = out[key];
+    if (value === undefined || value === null) {
+      out[key] = [];
+    } else if (Array.isArray(value)) {
+      out[key] = value.map((item) =>
+        item !== null && typeof item === "object" ? JSON.stringify(item) : item,
+      );
+    }
+  }
+
+  return out;
+}
+
 /** Combine per-wallet human-readable reports into one Markdown document. */
 function renderMultiWalletMarkdown(perWallet: PerWalletAuditResult[]): string {
   if (perWallet.length === 0) {
-    return "# Multi-Wallet Risk Report\n\nNo valid wallet addresses were provided.";
+    return "# Multi-Address Risk Report\n\nNo valid address targets were provided.";
   }
-  const header = `# Multi-Wallet Risk Report\n\nThis report covers ${perWallet.length} wallet(s).`;
+  const header = `# Multi-Address Risk Report\n\nThis report covers ${perWallet.length} address target(s).`;
   const sections = perWallet.map((w) => w.report.humanReadable);
   return [header, ...sections].join("\n\n---\n\n");
 }
 
+function findReportForAddress(
+  structured: AuditReportStructured | MultiWalletReport,
+  address: Address,
+): AuditReportStructured | undefined {
+  const key = address.toLowerCase();
+  if ("reports" in structured) {
+    return structured.reports.find((r) => r.walletAddress.toLowerCase() === key);
+  }
+  return structured.walletAddress.toLowerCase() === key ? structured : undefined;
+}
+
+function sanitizeAuditEvidenceForLlm(report: unknown): unknown {
+  return JSON.parse(
+    JSON.stringify(report, (field, value) => {
+      // The evidence log should not ask the LLM to echo a pre-existing address badge.
+      if (field === "addressStanding") return undefined;
+      return value;
+    }),
+  );
+}
+
+function buildA2aEvidenceLog(
+  structured: AuditReportStructured | MultiWalletReport,
+  address: Address,
+  inspection: AddressInspection | undefined,
+  activity: WalletActivity | undefined,
+): Record<string, unknown> {
+  const report = findReportForAddress(structured, address);
+  return {
+    address,
+    auditEvidence: sanitizeAuditEvidenceForLlm(report ?? structured),
+    addressInspection: inspection
+      ? {
+          address: inspection.address,
+          type: inspection.type,
+          token: inspection.token,
+          facts: inspection.facts,
+        }
+      : undefined,
+    walletActivity: activity
+      ? {
+          windowDays: activity.windowDays,
+          analyzedCount: activity.analyzedCount,
+          records: activity.records.slice(0, 25),
+          counterparties: activity.counterparties.slice(0, 20),
+        }
+      : undefined,
+  };
+}
+
+function applyA2aStanding(
+  structured: AuditReportStructured | MultiWalletReport,
+  address: Address,
+  inspection: AddressInspection | undefined,
+  ai: LlmAddressVerdict,
+): AddressStanding {
+  const standing: AddressStanding = {
+    address,
+    type: inspection?.type ?? "UNKNOWN",
+    verdict: ai.verdict,
+    riskLevel: ai.riskLevel,
+    official: ai.official,
+    blacklisted: ai.blacklisted,
+    badge: ai.badge,
+    reasons: ai.reasons,
+  };
+  if (ai.label !== undefined) standing.label = ai.label;
+  const report = findReportForAddress(structured, address);
+  if (report !== undefined) report.addressStanding = standing;
+  return standing;
+}
+
+async function enrichA2aWithLlm(
+  orchestrator: AuditRunner,
+  deliverable: AuditDeliverable,
+  addresses: Address[],
+  skills: AuditSkillSet | undefined,
+): Promise<A2aAddressIntelEntry[] | undefined> {
+  if (skills === undefined) return undefined;
+  const entries: A2aAddressIntelEntry[] = [];
+  for (const address of addresses) {
+    try {
+      const [inspection, activity] = await Promise.all([
+        typeof orchestrator.inspectAddress === "function"
+          ? orchestrator.inspectAddress(address)
+          : Promise.resolve(undefined),
+        typeof orchestrator.walletActivity === "function"
+          ? orchestrator.walletActivity(address)
+          : Promise.resolve(undefined),
+      ]);
+      const evidenceLog = buildA2aEvidenceLog(deliverable.structured, address, inspection, activity);
+      const aiVerdict = await skills.classifyAddressEvidence(evidenceLog);
+      const standing = applyA2aStanding(deliverable.structured, address, inspection, aiVerdict);
+      entries.push({ address, standing, evidenceLog, aiVerdict });
+    } catch {
+      /* LLM evidence classification is best-effort; deterministic report remains deliverable. */
+    }
+  }
+  return entries.length > 0 ? entries : undefined;
+}
+
 /**
- * Run the audit for a paid order: MULTI fans out across wallets, every other tier audits the first
- * wallet. Returns the structured + human-readable report and the flattened module statuses.
+ * Run the audit for a paid order: multiple submitted addresses fan out into the existing
+ * multi-address report shape; a single address uses the requested analysis depth.
  */
 export async function runAudit(
   orchestrator: AuditRunner,
   tier: Tier,
   addresses: Address[],
 ): Promise<AuditDeliverable> {
-  if (tier === "MULTI") {
+  if (addresses.length > 1 || tier === "MULTI") {
     const { multi, perWallet } = await orchestrator.auditMultipleWallets(addresses);
     return {
       structured: multi,
@@ -300,6 +501,13 @@ export interface OrderHandlerContext {
    * may be uploaded first). Defaults to inline-only (no upload).
    */
   uploadThresholdBytes?: number;
+  /**
+   * When present, persist each A2A report to result/<orderId>.json and add resultPageUrl /
+   * resultJsonUrl to the delivered schema. Direct unit tests omit this to avoid filesystem writes.
+   */
+  resultStore?: ResultStoreOptions;
+  /** Optional LLM skill set used to classify evidence logs into final badges and risk levels. */
+  skills?: AuditSkillSet;
 }
 
 /**
@@ -308,8 +516,8 @@ export interface OrderHandlerContext {
  *
  * Flow:
  *  1. Fetch the order; resolve its tier from `serviceId`. Unknown service → RejectOrder.
- *  2. Parse wallet addresses from the order requirements. Missing → RejectOrder (requirement 2.7).
- *  3. Run the audit (MULTI fans out; otherwise single wallet) and collect module statuses.
+ *  2. Parse address targets from the order requirements. Missing → RejectOrder (requirement 2.7).
+ *  3. Run the audit (multiple addresses fan out; otherwise single address) and collect statuses.
  *  4. {@link decideSettlement} with `escrowLocked: true`:
  *      - DELIVER_AND_SETTLE → build a schema deliverable (deliverableSchema = structured JSON,
  *        deliverableText = Markdown), optionally UploadFile for large reports, DeliverOrder, then
@@ -344,7 +552,7 @@ export async function handleOrderPaid(
       return { action: "REJECTED", reason };
     }
 
-    // Parse the audited wallet addresses (requirement 2.7: missing params → reject & refund).
+    // Parse the audited address targets (requirement 2.7: missing params → reject & refund).
     const addresses = parseAuditRequirements(order.requirements);
     if (addresses.length === 0) {
       const reason =
@@ -356,6 +564,17 @@ export async function handleOrderPaid(
 
     // Execute the audit. Escrow is already locked (the event is order_paid).
     const deliverable = await runAudit(ctx.orchestrator, tier, addresses);
+    const addressIntel = await enrichA2aWithLlm(
+      ctx.orchestrator,
+      deliverable,
+      addresses,
+      ctx.skills,
+    );
+    const llmSummaryText = renderA2aLlmSummary(addressIntel);
+    const finalHumanReadable =
+      llmSummaryText.length > 0
+        ? `${deliverable.humanReadable}\n\n${llmSummaryText}`
+        : deliverable.humanReadable;
     const decision = decideSettlement({
       escrowLocked: true,
       moduleStatuses: deliverable.statuses,
@@ -363,8 +582,73 @@ export async function handleOrderPaid(
     });
 
     if (decision.action === "DELIVER_AND_SETTLE") {
-      const schemaJson = JSON.stringify(deliverable.structured);
-      let deliverableText = deliverable.humanReadable;
+      const fileName = resultFileNameForOrder(orderId);
+      const resultUrls =
+        ctx.resultStore !== undefined ? buildResultUrls(fileName, ctx.resultStore) : undefined;
+      const communicationLog = [
+        {
+          step: "order_paid",
+          message: `CAP order ${orderId} is paid; escrow is locked and the Provider can audit.`,
+          at: new Date().toISOString(),
+        },
+        {
+          step: "audit_completed",
+          message: `Read-only address intelligence completed for ${addresses.length} address target(s).`,
+          at: new Date().toISOString(),
+        },
+        ...(addressIntel !== undefined
+          ? [
+              {
+                step: "llm_classified",
+                message: `LLM classified ${addressIntel.length} address target(s) from the saved evidence log and wrote the verdict back to the final result.`,
+                at: new Date().toISOString(),
+              },
+            ]
+          : []),
+      ];
+      let storedPayload: StoredReportPayload | undefined;
+      if (resultUrls !== undefined) {
+        storedPayload = {
+          orderId,
+          tier,
+          mode: "a2a",
+          paid: true,
+          structured: deliverable.structured,
+          humanReadable: finalHumanReadable,
+          addressIntel,
+          resultJsonUrl: resultUrls.resultJsonUrl,
+          resultPageUrl: resultUrls.resultPageUrl,
+          status: "saved",
+          communicationLog: [
+            ...communicationLog,
+            {
+              step: "result_saved",
+              message: `Provider saved the report JSON as ${fileName}.`,
+              at: new Date().toISOString(),
+            },
+          ],
+        };
+        const filePath = await writeResultJson(
+          fileName,
+          storedPayload,
+          ctx.resultStore,
+        );
+        logger.info(`Saved result JSON for order ${orderId}: ${filePath}`);
+      }
+
+      const schemaPayload = normalizeForCapSchema(deliverable.structured);
+      if (addressIntel !== undefined) {
+        schemaPayload.addressIntel = addressIntel;
+      }
+      if (resultUrls !== undefined) {
+        schemaPayload.resultPageUrl = resultUrls.resultPageUrl;
+        schemaPayload.resultJsonUrl = resultUrls.resultJsonUrl;
+      }
+      const schemaJson = JSON.stringify(schemaPayload);
+      let deliverableText = finalHumanReadable;
+      if (resultUrls !== undefined) {
+        deliverableText = `${deliverableText}\n\nReport page: ${resultUrls.resultPageUrl}`;
+      }
 
       // Large / multi reports may be uploaded first; embed the object key for GetDownloadURL.
       const threshold = ctx.uploadThresholdBytes ?? Number.POSITIVE_INFINITY;
@@ -383,6 +667,26 @@ export async function handleOrderPaid(
         deliverableText,
       };
       const deliverResult = await client.deliverOrder(orderId, req);
+      const deliveryTxHash = extractTxHash(deliverResult);
+      if (resultUrls !== undefined && storedPayload !== undefined) {
+        await writeResultJson(
+          fileName,
+          {
+            ...storedPayload,
+            status: "delivered",
+            deliveryTxHash,
+            communicationLog: [
+              ...(storedPayload.communicationLog ?? []),
+              {
+                step: "delivered",
+                message: `Provider delivered the schema and report URL to CROO.${deliveryTxHash ? ` tx=${deliveryTxHash}` : ""}`,
+                at: new Date().toISOString(),
+              },
+            ],
+          },
+          ctx.resultStore,
+        );
+      }
 
       // Record the settlement with the hash available at delivery time (the CAPVault clearing tx
       // hash arrives later on order_completed). Payer is the requester's settlement-side wallet.
@@ -390,7 +694,7 @@ export async function handleOrderPaid(
         orderId,
         tier,
         order.requesterWalletAddress,
-        extractTxHash(deliverResult),
+        deliveryTxHash,
       );
       logger.info(
         `Delivered order ${orderId} (tier ${tier}); recorded settlement of ${settlement.amountUsdc} USDC`,
@@ -428,6 +732,10 @@ export interface WalletAuditProviderDeps {
   logger?: CapLogger;
   /** Optional upload threshold for large reports (bytes); defaults to inline-only. */
   uploadThresholdBytes?: number;
+  /** Local result JSON directory and public base URL for clickable report pages. */
+  resultStore?: ResultStoreOptions;
+  /** Optional LLM skill set for evidence-based address classification. */
+  skills?: AuditSkillSet;
 }
 
 /**
@@ -442,6 +750,8 @@ export class WalletAuditProvider {
   private readonly ledger: SettlementLedger;
   private readonly logger: CapLogger;
   private readonly uploadThresholdBytes: number | undefined;
+  private readonly resultStore: ResultStoreOptions | undefined;
+  private readonly skills: AuditSkillSet | undefined;
   private stream: CapEventStream | undefined;
 
   constructor(deps: WalletAuditProviderDeps) {
@@ -451,6 +761,8 @@ export class WalletAuditProvider {
     this.ledger = deps.ledger ?? new SettlementLedger();
     this.logger = deps.logger ?? createConsoleLogger();
     this.uploadThresholdBytes = deps.uploadThresholdBytes;
+    this.resultStore = deps.resultStore ?? {};
+    this.skills = deps.skills;
   }
 
   /** The settlement ledger holding records for delivered orders. */
@@ -494,7 +806,7 @@ export class WalletAuditProvider {
       this.logger.info(`order_expired: ${event.order_id ?? "?"}`);
     });
 
-    this.logger.info("WalletAuditProvider started; listening for CAP events");
+    this.logger.info("AddressIntelProvider started; listening for CAP events");
     return stream;
   }
 
@@ -517,6 +829,8 @@ export class WalletAuditProvider {
       ledger: this.ledger,
       logger: this.logger,
       uploadThresholdBytes: this.uploadThresholdBytes,
+      resultStore: this.resultStore,
+      skills: this.skills,
     });
   }
 }
@@ -534,8 +848,34 @@ export function createCapClient(
   config: RuntimeConfig,
   sdkKey: string = config.crooSdkKey,
 ): CapClient {
+  const sdkLogger = {
+    info: (msg: string, ...args: unknown[]) => {
+      // Suppress noisy low-level SDK logs to keep console clean for presentation/video
+      if (
+        msg.startsWith("websocket:") ||
+        msg.startsWith("got negotiation") ||
+        msg.startsWith("got order") ||
+        msg.startsWith("listed ") ||
+        msg.startsWith("websocket connecting") ||
+        msg.startsWith("websocket connected") ||
+        msg.startsWith("websocket reconnected") ||
+        msg.startsWith("websocket reconnecting")
+      ) {
+        return;
+      }
+      console.info(`[sdk] ${msg}`, ...args);
+    },
+    warn: (msg: string, ...args: unknown[]) => console.warn(`[sdk:warn] ${msg}`, ...args),
+    error: (msg: string, ...args: unknown[]) => console.error(`[sdk:error] ${msg}`, ...args),
+    debug: () => {}, // silence http request logging
+  };
   const client = new AgentClient(
-    { baseURL: config.crooApiUrl, wsURL: config.crooWsUrl, rpcURL: config.rpcUrl },
+    {
+      baseURL: config.crooApiUrl,
+      wsURL: config.crooWsUrl,
+      rpcURL: config.rpcUrl,
+      logger: sdkLogger,
+    },
     sdkKey,
   );
   return client as unknown as CapClient;

@@ -110,14 +110,14 @@ export function badgeForVerdict(
     return {
       level: "OFFICIAL",
       label: "Official verified",
-      description: "Matched the curated official / known-good address list.",
+      description: "Evidence supports an official protocol/service address.",
     };
   }
   if (verdict === "LIKELY_SAFE") {
     return {
       level: "SAFE",
       label: "Likely safe",
-      description: "No risk signals were found in the available deterministic data.",
+      description: "No material risk signals were found in the available evidence.",
     };
   }
   if (verdict === "CAUTION") {
@@ -251,6 +251,7 @@ export class AddressIntel {
       // curated list alone can flag dangerous or vouch for official addresses.
       const neutral: ContractMeta = {
         contract: address,
+        name: null,
         verified: true,
         deployedAt: null,
         txCount: Number.MAX_SAFE_INTEGER,

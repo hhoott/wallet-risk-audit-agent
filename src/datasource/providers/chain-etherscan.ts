@@ -550,16 +550,25 @@ export class EtherscanChainDataSource implements ChainDataSource {
 
     // Verified source via Etherscan getsourcecode.
     let verified = false;
+    let name: string | null = null;
     try {
-      const source = await this.fetchEtherscanResult<Array<{ SourceCode?: string }>>({
+      const source = await this.fetchEtherscanResult<
+        Array<{ SourceCode?: string; ContractName?: string }>
+      >({
         module: "contract",
         action: "getsourcecode",
         address: addr,
       });
-      verified =
-        Array.isArray(source) && source.length > 0 && isVerifiedSource(source[0].SourceCode);
+      if (Array.isArray(source) && source.length > 0) {
+        verified = isVerifiedSource(source[0].SourceCode);
+        name =
+          typeof source[0].ContractName === "string" && source[0].ContractName.trim().length > 0
+            ? source[0].ContractName
+            : null;
+      }
     } catch {
       verified = false;
+      name = null;
     }
 
     // deployedAt via getcontractcreation (creation tx) then the tx's block timestamp.
@@ -586,6 +595,7 @@ export class EtherscanChainDataSource implements ChainDataSource {
 
     return {
       contract: addr,
+      name,
       verified,
       deployedAt,
       txCount,

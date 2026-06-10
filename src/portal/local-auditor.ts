@@ -9,9 +9,9 @@
  * It reuses the exported {@link runAudit} (the exact logic the Provider runs on a paid order) and
  * derives the same A2A decision (Risk_Level / Health_Score gating) the example Requester would.
  *
- * AI insight (optional): when an {@link AuditSkillSet} is injected, FULL/MULTI audits are enriched
- * with an LLM-generated plain-language risk explanation + remediation plan (the deterministic report
- * is always produced first; the AI layer is strictly additive and best-effort).
+ * AI insight (optional): when an {@link AuditSkillSet} is injected, the single service is enriched
+ * with an LLM-generated structured verdict plus plain-language risk explanation. The scanner report
+ * is produced first as evidence; the LLM layer assigns the final official/risk badge from that log.
  *
  * Security: strictly read-only — it only consumes the injected read-only data sources and the pure
  * analysis modules; there is no signing / send-transaction path.
@@ -29,13 +29,14 @@ import type {
   RiskLevel,
   WalletActivity,
   RelatedAddressAnalysis,
+  AddressStanding,
 } from "../models.js";
-import type { AuditSkillSet } from "../llm/skills.js";
+import type { AuditSkillSet, LlmAddressVerdict } from "../llm/skills.js";
 import type { TokenContractInfo } from "../datasource/types.js";
 import { DEFAULT_CHAIN, type ChainDescriptor } from "../chains.js";
 import { buildAddressStanding } from "../modules/address-intel.js";
 
-/** One audited address's type-aware inspection (deterministic facts + optional AI assessment). */
+/** One audited address's type-aware inspection (scanner evidence + optional AI assessment). */
 export interface AddressIntelEntry {
   address: string;
   type: AddressType;
@@ -48,8 +49,12 @@ export interface AddressIntelEntry {
   reasons: string[];
   /** Token security signals, present only for ERC-20 token contracts. */
   token?: TokenContractInfo;
-  /** Type-specific AI assessment (Markdown), present on premium tiers when an LLM is configured. */
+  /** Type-specific AI assessment (Markdown), present when an LLM is configured. */
   aiAssessment?: string;
+  /** Structured LLM classification derived from the evidence log. */
+  aiVerdict?: LlmAddressVerdict;
+  /** The fact/evidence log that was given to the LLM. */
+  evidenceLog?: unknown;
   /**
    * Annotated transaction records + ranked counterparties — present for EOA wallets on FULL/MULTI
    * (QUICK stays lean and does not fetch transaction history).
@@ -82,7 +87,7 @@ export interface AuditEngineResult {
   humanReadable: string;
   /** A2A gating decision derived from Risk_Level / Health_Score (proceed / abort). */
   decision: AuditDecision;
-  /** Optional AI insight (FULL/MULTI tiers when an LLM is configured). */
+  /** Optional AI insight when an LLM is configured. */
   ai?: AiInsight;
   /**
    * Per-audited-address, type-aware intelligence (type detection + verdict + token signals + an
@@ -128,11 +133,31 @@ const RELATED_TIERS: ReadonlySet<Tier> = new Set<Tier>(["MULTI"]);
 /** How many of a wallet's top counterparties to deeply analyze at the MULTI tier. */
 const MAX_RELATED_COUNTERPARTIES = 5;
 
+function auditEvidenceForAddress(
+  structured: AuditReportStructured | MultiWalletReport,
+  address: string,
+): unknown {
+  const key = address.toLowerCase();
+  const report =
+    "reports" in structured
+      ? structured.reports.find((r) => r.walletAddress.toLowerCase() === key)
+      : structured.walletAddress.toLowerCase() === key
+        ? structured
+        : undefined;
+  return JSON.parse(
+    JSON.stringify(report ?? structured, (field, value) => {
+      // The LLM should classify from evidence fields, not echo a previously assigned standing.
+      if (field === "addressStanding") return undefined;
+      return value;
+    }),
+  );
+}
+
 /** A {@link LocalAuditor} backed by the agent's real orchestrator (shared in the unified process). */
 export class OrchestratorLocalAuditor implements LocalAuditor {
   constructor(
     private readonly orchestrator: AuditRunner,
-    /** Optional AI skill set; when present, FULL/MULTI reports are enriched with LLM insight. */
+    /** Optional AI skill set; when present, reports are enriched with LLM insight. */
     private readonly skills?: AuditSkillSet,
     /** The audited chain (injected into AI prompts so the model knows which chain it's analyzing). */
     private readonly chain: ChainDescriptor = DEFAULT_CHAIN,
@@ -155,10 +180,13 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
     if (typeof this.orchestrator.inspectAddress === "function") {
       const inspectAddress = this.orchestrator.inspectAddress.bind(this.orchestrator);
       const inspections = await Promise.all(
-        addresses.map((a) => this.inspectOne(a, tier, inspectAddress)),
+        addresses.map((a) => this.inspectOne(a, tier, inspectAddress, deliverable.structured)),
       );
       const found = inspections.filter((x): x is AddressIntelEntry => x !== undefined);
-      if (found.length > 0) result.addressIntel = found;
+      if (found.length > 0) {
+        result.addressIntel = found;
+        this.applyPrimaryLlmVerdict(result.structured, found[0]);
+      }
     }
 
     // Best-effort AI enrichment for premium tiers. Never let an LLM failure break the audit.
@@ -185,6 +213,7 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
     address: string,
     tier: Tier,
     inspectAddress: NonNullable<AuditRunner["inspectAddress"]>,
+    structured: AuditReportStructured | MultiWalletReport,
   ): Promise<AddressIntelEntry | undefined> {
     try {
       const inspection = await inspectAddress(address);
@@ -224,9 +253,23 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
       // Type-specific AI assessment (premium tiers + LLM configured).
       if (this.skills !== undefined && AI_TIERS.has(tier)) {
         try {
+          entry.evidenceLog = this.buildEvidenceLog(
+            entry,
+            inspection.facts,
+            auditEvidenceForAddress(structured, inspection.address),
+          );
+          const aiVerdict = await this.skills.classifyAddressEvidence(
+            entry.evidenceLog,
+            this.chain.promptLabel,
+          );
+          this.mergeAiVerdict(entry, aiVerdict);
+        } catch {
+          /* structured LLM verdict is best-effort */
+        }
+        try {
           entry.aiAssessment = await this.skills.analyzeByType(
             inspection.type,
-            inspection.facts,
+            entry.evidenceLog ?? inspection.facts,
             this.chain.promptLabel,
           );
         } catch {
@@ -236,6 +279,69 @@ export class OrchestratorLocalAuditor implements LocalAuditor {
       return entry;
     } catch {
       return undefined;
+    }
+  }
+
+  private buildEvidenceLog(
+    entry: AddressIntelEntry,
+    facts: Record<string, unknown>,
+    auditEvidence: unknown,
+  ): Record<string, unknown> {
+    return {
+      address: entry.address,
+      chain: this.chain.key,
+      chainName: this.chain.name,
+      auditEvidence,
+      observedAddress: {
+        type: entry.type,
+      },
+      typeFacts: facts,
+      token: entry.token,
+      walletActivity: entry.activity
+        ? {
+            windowDays: entry.activity.windowDays,
+            analyzedCount: entry.activity.analyzedCount,
+            records: entry.activity.records.slice(0, 25),
+            counterparties: entry.activity.counterparties.slice(0, 20),
+          }
+        : undefined,
+    };
+  }
+
+  private mergeAiVerdict(entry: AddressIntelEntry, ai: LlmAddressVerdict): void {
+    entry.aiVerdict = ai;
+    entry.verdict = ai.verdict;
+    entry.riskLevel = ai.riskLevel;
+    entry.official = ai.official;
+    entry.blacklisted = ai.blacklisted;
+    if (ai.label !== undefined) entry.label = ai.label;
+    entry.badge = ai.badge;
+    entry.reasons = ai.reasons.length > 0 ? ai.reasons : entry.reasons;
+  }
+
+  private applyPrimaryLlmVerdict(
+    structured: AuditReportStructured | MultiWalletReport,
+    entry: AddressIntelEntry | undefined,
+  ): void {
+    if (entry?.aiVerdict === undefined) return;
+    const standing: AddressStanding = {
+      address: entry.address,
+      type: entry.type,
+      verdict: entry.verdict,
+      riskLevel: entry.riskLevel,
+      official: entry.official,
+      blacklisted: entry.blacklisted,
+      label: entry.label,
+      badge: entry.badge,
+      reasons: entry.reasons,
+    };
+    if ("reports" in structured) {
+      const first = structured.reports.find(
+        (r) => r.walletAddress.toLowerCase() === entry.address.toLowerCase(),
+      );
+      if (first) first.addressStanding = standing;
+    } else {
+      structured.addressStanding = standing;
     }
   }
 

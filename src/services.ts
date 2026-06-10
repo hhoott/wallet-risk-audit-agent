@@ -1,18 +1,18 @@
 /**
- * Service metadata and tier configuration (task 15.1 / 15.2, requirements 2.5, 3.2, 3.3, 4.1).
+ * Service metadata and single-service configuration.
  *
- * This file is the code-side, in-repo source of truth for the three paid CAP Services
- * (Quick / Full / Multi). The descriptions, skill tags, input parameters and the structured
+ * This file is the code-side, in-repo source of truth for the paid CAP Service.
+ * The description, skill tags, input parameters and the structured
  * deliverable schema are maintained here so they can be copied verbatim into the CROO Agent
  * Store Dashboard when registering Services (task H1-2, a manual step).
  *
  * The actual Service_IDs are produced by the Dashboard at registration time and injected at
  * runtime via environment variables — they are NOT hard-coded here.
- * MANUAL(H1-2): SERVICE_ID_QUICK / SERVICE_ID_FULL / SERVICE_ID_MULTI are injected via env.
+ * MANUAL(H1-2): SERVICE_ID is injected via env.
  */
 
 import type { Tier, RuntimeConfig } from "./config.js";
-import { TIER_PRICE_USDC, buildServiceTierMap } from "./config.js";
+import { DEFAULT_SERVICE_TIER, TIER_PRICE_USDC, buildServiceTierMap } from "./config.js";
 
 /** Static, human-authored metadata describing one paid Service tier. */
 export interface ServiceMetadata {
@@ -27,47 +27,25 @@ export interface ServiceMetadata {
   priceUsdc: number;
   /** Human-readable description of the input parameters callers must supply. */
   inputParameters: string;
-  /** The audited chain this Service operates on (single-chain MVP). */
-  auditedChain: "Ethereum Mainnet";
+  /** Human-readable audited-chain scope for this Service. */
+  auditedChain: string;
 }
 
 /**
- * The three Service definitions. These are filled into the Dashboard "Add Service" wizard.
- * Prices are sourced from TIER_PRICE_USDC so they cannot drift from the rest of the system.
+ * The single Service definition. Fill this into the Dashboard "Add Service" wizard.
+ * Price is sourced from the default tier price so it cannot drift from the rest of the system.
  */
-export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
-  QUICK: {
-    tier: "QUICK",
-    name: "Wallet Quick Check-up",
+export const SERVICE_CATALOG: Partial<Record<Tier, ServiceMetadata>> = {
+  [DEFAULT_SERVICE_TIER]: {
+    tier: DEFAULT_SERVICE_TIER,
+    name: "Web3 Address Intel Report",
     description:
-      "Read-only quick safety check for a single address: detects the address type (wallet / token / NFT / contract), returns a Wallet Health Score plus an addressStanding badge (Official verified / Likely safe / Use caution / Dangerous / Unknown), unlimited (infinite) token approvals and any interactions with known high-risk contracts. No AI and no transaction history — the fast, cheap screen. Never touches private keys; never sends transactions.",
-    skillTags: ["DeFi", "Security", "On-chain Analysis", "Monitoring"],
-    priceUsdc: TIER_PRICE_USDC.QUICK,
-    inputParameters:
-      'A single Ethereum wallet address, passed in the negotiation requirements as JSON: {"walletAddress":"0x..."} or {"walletAddresses":["0x..."]}.',
-    auditedChain: "Ethereum Mainnet",
-  },
-  FULL: {
-    tier: "FULL",
-    name: "Wallet Full Risk Report",
-    description:
-      "Read-only full risk report for a single address. Adds, on top of QUICK: complete approval scan, suspicious & high-risk contract classification, asset distribution with USD valuation, failed/abnormal transaction detection, an annotated recent-transaction history (each counterparty labelled official / risky / contract), and prioritized revocation links. The structured JSON includes addressStanding with official/blacklist flags and a display badge. When an LLM is configured, it must reference that badge in the type-specific AI assessment plus the plain-language risk explanation and remediation plan. Read-only; never touches private keys.",
+      "Read-only multi-chain address and counterparty risk report for any EVM wallet, token, NFT collection, smart contract, sender, recipient, router, bridge, or other transaction counterparty. Uses Etherscan V2 plus per-chain RPC to collect an evidence log: address type, explorer contract name, source verification, creation metadata, source labels, blacklist hints, approval exposure, asset distribution, failed/abnormal transaction findings, and recent interactive counterparties. When configured, an LLM extracts the final official/safe/caution/dangerous badge, approval risks, transaction risks, and reasons from that evidence log. The delivered JSON includes addressStanding.badge, aiVerdict/evidenceLog in saved result files, riskLevelSummary, healthScore, and remediation suggestions. The agent is strictly read-only and never handles private keys or sends transactions.",
     skillTags: ["DeFi", "Security", "On-chain Analysis", "Risk Assessment"],
-    priceUsdc: TIER_PRICE_USDC.FULL,
+    priceUsdc: TIER_PRICE_USDC[DEFAULT_SERVICE_TIER],
     inputParameters:
-      'A single Ethereum wallet address, passed in the negotiation requirements as JSON: {"walletAddress":"0x..."}.',
-    auditedChain: "Ethereum Mainnet",
-  },
-  MULTI: {
-    tier: "MULTI",
-    name: "Multi-Wallet & Counterparty Analysis",
-    description:
-      "Read-only deep analysis across multiple wallets (up to 50) with a 365-day history window. Everything in FULL per wallet, plus a combined summary AND a deeper look at related addresses: each wallet's most-interacted counterparties are themselves typed, risk-assessed and given their own badge (Official verified / Likely safe / Use caution / Dangerous / Unknown), and a token/contract's owner is profiled. When an LLM is configured, each analyzed counterparty also gets an AI assessment that references the badge. The top tier for tracing where a wallet's funds actually flow. Read-only; never touches private keys.",
-    skillTags: ["DeFi", "Security", "On-chain Analysis", "Portfolio"],
-    priceUsdc: TIER_PRICE_USDC.MULTI,
-    inputParameters:
-      'A list of Ethereum wallet addresses, passed in the negotiation requirements as JSON: {"walletAddresses":["0x...","0x..."]}.',
-    auditedChain: "Ethereum Mainnet",
+      'One or more EVM address targets, passed in the negotiation requirements as JSON: {"walletAddress":"0x...", "chain":"ethereum"} or {"walletAddresses":["0x...","0x..."], "chain":"ethereum"}. Supported chain values: ethereum, base, arbitrum, optimism, polygon. Maximum 50 addresses per request.',
+    auditedChain: "EVM multi-chain: Ethereum, Base, Arbitrum, Optimism, Polygon",
   },
 };
 
@@ -77,11 +55,11 @@ export const SERVICE_CATALOG: Record<Tier, ServiceMetadata> = {
  */
 export const DELIVERABLE_SCHEMA_FIELDS: { name: string; type: string; description: string }[] = [
   { name: "schemaVersion", type: "string", description: "Structured report schema version." },
-  { name: "walletAddress", type: "address", description: "The audited wallet address." },
-  { name: "auditedChain", type: "string", description: 'Audited chain name ("Ethereum Mainnet").' },
+  { name: "walletAddress", type: "address", description: "The audited address / counterparty address." },
+  { name: "auditedChain", type: "string", description: "Audited chain display name." },
   { name: "generatedAt", type: "string", description: "Report generation time (UTC ISO-8601)." },
-  { name: "tier", type: "string", description: "Purchased tier (QUICK / FULL / MULTI)." },
-  { name: "healthScore", type: "number", description: "Wallet health score 0-100." },
+  { name: "tier", type: "string", description: "Internal analysis depth for the single Service." },
+  { name: "healthScore", type: "number", description: "Address risk health score 0-100." },
   {
     name: "healthGrade",
     type: "string",
@@ -92,7 +70,7 @@ export const DELIVERABLE_SCHEMA_FIELDS: { name: string; type: string; descriptio
     name: "addressStanding",
     type: "object",
     description:
-      "Deterministic audited-address standing: { address, type, verdict, riskLevel, official, blacklisted, label?, badge, reasons[] }. badge.level is OFFICIAL / SAFE / CAUTION / DANGEROUS / UNKNOWN and badge.label is shown as the result-page corner/status badge.",
+      "Final audited-address standing: { address, type, verdict, riskLevel, official, blacklisted, label?, badge, reasons[] }. With LLM enabled, these fields are applied from the LLM's evidence-log classification. badge.level is OFFICIAL / SAFE / CAUTION / DANGEROUS / UNKNOWN and badge.label is shown as the result-page corner/status badge.",
   },
   { name: "approvals", type: "array", description: "Approval records." },
   { name: "contractRisks", type: "array", description: "Suspicious / high-risk contracts." },
@@ -108,7 +86,7 @@ export const DELIVERABLE_SCHEMA_FIELDS: { name: string; type: string; descriptio
 
 /** Resolve a tier's metadata (description, skill tags, price, input params). */
 export function getServiceMetadata(tier: Tier): ServiceMetadata {
-  return SERVICE_CATALOG[tier];
+  return SERVICE_CATALOG[tier] ?? SERVICE_CATALOG[DEFAULT_SERVICE_TIER]!;
 }
 
 /**
@@ -117,14 +95,7 @@ export function getServiceMetadata(tier: Tier): ServiceMetadata {
  * MANUAL(H1-2): the value is produced by the Dashboard and injected via env.
  */
 export function serviceIdForTier(tier: Tier, config: RuntimeConfig): string | undefined {
-  switch (tier) {
-    case "QUICK":
-      return config.serviceIdQuick;
-    case "FULL":
-      return config.serviceIdFull;
-    case "MULTI":
-      return config.serviceIdMulti;
-  }
+  return tier === DEFAULT_SERVICE_TIER ? config.serviceId : undefined;
 }
 
 /**

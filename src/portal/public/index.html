@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>On-chain Risk Audit — Wallets, Tokens, NFTs & Contracts</title>
+    <title>Web3 Address Intel — Counterparty Risk Agent</title>
     <meta
       name="description"
-      content="A read-only on-chain risk audit agent. Paste any Ethereum address — wallet, token, NFT, or contract — and get a type-aware security report with an AI risk read-out, paid per call over CAP."
+      content="A read-only Web3 address intelligence agent. Paste any EVM wallet, token, NFT, contract, or transaction counterparty address and get official-address checks, risk badges, and optional AI analysis over CAP."
     />
     <link rel="stylesheet" href="/assets/styles.css" />
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
@@ -15,9 +15,9 @@
     <!-- Navigation: translucent dark glass, sticky -->
     <nav class="nav" aria-label="Primary">
       <div class="nav__inner">
-        <a class="nav__brand" href="#top" aria-label="On-chain Risk Audit home">
+        <a class="nav__brand" href="#top" aria-label="Web3 Address Intel home">
           <span class="nav__shield" aria-hidden="true">◇</span>
-          <span class="nav__brandtext">On-chain Risk Audit</span>
+          <span class="nav__brandtext">Web3 Address Intel</span>
         </a>
         <div class="nav__links">
           <a href="#what">What it checks</a>
@@ -34,9 +34,9 @@
       <section class="hero" aria-labelledby="hero-title">
         <div class="hero__content">
           <p class="hero__eyebrow">CROO Agent · DeFi / On-chain Ops</p>
-          <h1 id="hero-title" class="hero__title">Check any address before you trust it.</h1>
+          <h1 id="hero-title" class="hero__title">Check any counterparty before you trust it.</h1>
           <p class="hero__subtitle">
-            A read-only risk audit for any Ethereum address. Paste a wallet, token, NFT, or
+            A read-only risk check for any EVM address. Paste a wallet, token, NFT, or
             contract — the agent detects what it is and runs the right checks, then explains the
             risk in plain language.
           </p>
@@ -78,15 +78,15 @@
               <p class="scope__body">Verification, age, activity, owner controls, and curated allow/deny lists before you approve or send.</p>
             </div>
           </div>
-          <p class="scope__note" id="scope-note-ai" hidden>Higher tiers add an AI read-out: what the findings mean and what to do next.</p>
+          <p class="scope__note" id="scope-note-ai" hidden>AI read-out enabled: what the findings mean and what to do next.</p>
           <p class="scope__note">Works across Ethereum, Base, Arbitrum, Optimism, and Polygon — read-only, never touches your keys.</p>
         </div>
       </section>
 
-      <!-- Pricing tiers: dark section -->
+      <!-- Service: dark section -->
       <section class="section section--dark" id="tiers" aria-labelledby="tiers-title">
         <div class="container">
-          <h2 class="section__title section__title--light" id="tiers-title">Pick a tier.</h2>
+          <h2 class="section__title section__title--light" id="tiers-title">One service.</h2>
           <p class="section__lead section__lead--light">Pay per call in USDC, settled on Base over the CROO Agent Protocol.</p>
           <div class="tiers" id="tiers-grid" role="list">
             <!-- Tier cards are rendered by app.js from /api/tiers -->
@@ -100,7 +100,7 @@
         <div class="container container--narrow">
           <h2 class="section__title">Run a check.</h2>
           <p class="section__lead">
-            Paste an address, pick a tier, and the agent figures out the rest.
+            Paste one or more addresses, pick a chain, and the agent figures out the rest.
           </p>
 
           <div class="mode-banner" id="mode-banner" hidden role="status">
@@ -109,7 +109,7 @@
           </div>
 
           <form class="order order--light" id="order-form" novalidate>
-            <div class="field">
+            <div class="field" hidden>
               <label class="field__label field__label--dark" for="tier-select">Tier</label>
               <select class="field__input" id="tier-select" name="tier" required></select>
             </div>
@@ -132,7 +132,7 @@
                 spellcheck="false"
                 required
               ></textarea>
-              <p class="field__hint" id="wallet-hint">Any Ethereum address (0x + 40 hex).</p>
+              <p class="field__hint" id="wallet-hint">One or more EVM addresses (0x + 40 hex), separated by spaces, commas, or new lines.</p>
             </div>
 
             <button class="btn btn--primary btn--block" type="submit" id="order-submit">
@@ -164,7 +164,7 @@
             <li class="step step--light">
               <span class="step__num">1</span>
               <h3 class="step__title">You submit an address</h3>
-              <p class="step__body">Paste any Ethereum address and pick a tier. Hire over CAP, or call the HTTP API / A2A.</p>
+              <p class="step__body">Paste any EVM address or transaction counterparty. Hire over CAP, or call the HTTP API / A2A.</p>
             </li>
             <li class="step step--light">
               <span class="step__num">2</span>
@@ -174,7 +174,7 @@
             <li class="step step--light">
               <span class="step__num">3</span>
               <h3 class="step__title">The agent detects & audits</h3>
-              <p class="step__body">It identifies the address type and runs the matching read-only checks on public Ethereum data.</p>
+              <p class="step__body">It identifies the address type and runs the matching read-only checks through Etherscan V2 and per-chain RPC data.</p>
             </li>
             <li class="step step--light">
               <span class="step__num">4</span>

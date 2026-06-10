@@ -43,7 +43,7 @@ export async function main(): Promise<void> {
     provider = await startProvider();
 
     // 2) The web UI + API: reuse the Provider's audit engine (same orchestrator, same process).
-    //    Add AI insight (FULL/MULTI) when an OpenAI-compatible LLM is configured.
+    //    Add AI insight when an OpenAI-compatible LLM is configured.
     const llm = loadLlmConfig();
     const model = llm.enabled ? await createChatModel(llm) : undefined;
     const skills = model ? new AuditSkillSet(model) : undefined;

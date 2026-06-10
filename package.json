@@ -1,7 +1,7 @@
 {
-  "name": "wallet-risk-audit-agent",
+  "name": "web3-address-intel-risk-agent",
   "version": "0.1.0",
-  "description": "Read-only on-chain wallet risk audit agent for the CROO Agent Protocol (CAP). Hireable agent-to-agent over CAP, callable as an HTTP API, and usable through a bundled web UI.",
+  "description": "Read-only multi-chain Web3 address intelligence and counterparty risk agent for the CROO Agent Protocol (CAP). Hireable agent-to-agent over CAP, callable as an HTTP API, and usable through a bundled web UI.",
   "license": "MIT",
   "author": "65159328 <65159328@qq.com>",
   "type": "module",
@@ -12,19 +12,20 @@
     "a2a",
     "web3",
     "ethereum",
-    "wallet-security",
+    "address-intelligence",
+    "counterparty-risk",
     "defi",
     "risk-audit",
     "read-only",
     "langchain"
   ],
-  "homepage": "https://github.com/hhoott/wallet-risk-audit-agent#readme",
+  "homepage": "https://github.com/hhoott/web3-address-intel-risk-agent#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hhoott/wallet-risk-audit-agent.git"
+    "url": "git+https://github.com/hhoott/web3-address-intel-risk-agent.git"
   },
   "bugs": {
-    "url": "https://github.com/hhoott/wallet-risk-audit-agent/issues"
+    "url": "https://github.com/hhoott/web3-address-intel-risk-agent/issues"
   },
   "engines": {
     "node": ">=18.20"
@@ -50,6 +51,8 @@
     "provider": "node --env-file-if-exists=.env dist/main.js",
     "provider:dev": "npm run build && node --env-file-if-exists=.env dist/main.js",
     "requester": "node --env-file-if-exists=.env dist/examples/requester.js",
+    "requester:live": "node --env-file-if-exists=.env dist/examples/run-live-a2a.js",
+    "requester:dry-run": "node --env-file-if-exists=.env dist/examples/run-live-a2a.js --dry-run",
     "portal": "node --env-file-if-exists=.env dist/portal/main.js",
     "portal:dev": "npm run build && node --env-file-if-exists=.env dist/portal/main.js"
   },

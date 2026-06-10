@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving the Wallet Risk Audit Agent. This document covers the
+Thanks for your interest in improving the Web3 Address Intel & Risk Agent. This document covers the
 local setup, the project layout, and the conventions we follow.
 
 ## Prerequisites
