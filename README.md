@@ -20,7 +20,7 @@ The project exposes the same address intelligence engine through three product s
 
 Recommended review path:
 
-1. Watch the feature demo video: <https://youtu.be/qu558Y0zX90>
+1. Watch the feature demo video: <https://youtu.be/KcomHAS7xQk>
    - Local render source: `test-guide/hyperframes-a2a-demo/croo-address-intel-feature-demo.mp4`
 2. Inspect the three saved report URLs below.
 3. Review the A2A flow in `src/examples/run-live-a2a.ts` and `src/cap/provider.ts`.
