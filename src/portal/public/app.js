@@ -101,7 +101,9 @@ async function loadTiers() {
     const data = await res.json();
     state.paymentMode = data.paymentMode ?? "paid";
     state.metamask = data.metamask ?? { enabled: false };
-    state.allowCrooKey = data.allowCrooKey === true;
+    // MetaMask direct payment is the preferred public web checkout. When it is configured, hide the
+    // CROO requester-key path so users do not paste agent keys into the web checkout.
+    state.allowCrooKey = state.metamask.enabled ? false : data.allowCrooKey === true;
     state.chains = Array.isArray(data.chains) ? data.chains : [];
     state.defaultChain = data.defaultChain ?? "ethereum";
     state.aiEnabled = data.aiEnabled === true;
@@ -274,6 +276,7 @@ function openPayModal(tier, addresses) {
   els.paySkip.hidden = state.paymentMode !== "free";
 
   // Show / hide the CROO-key tab (demo capability) and the MetaMask tab based on server config.
+  // If MetaMask is configured, the web checkout intentionally disables the CROO-key path.
   els.tabCroo.hidden = !state.allowCrooKey;
   els.tabMm.hidden = !state.metamask.enabled;
   if (state.metamask.enabled) {
@@ -285,17 +288,19 @@ function openPayModal(tier, addresses) {
   if (tabBar) tabBar.hidden = methodCount < 2;
 
   // Default to the first available method.
-  setPayMethod(state.allowCrooKey ? "croo" : state.metamask.enabled ? "metamask" : "croo");
+  setPayMethod(state.metamask.enabled ? "metamask" : state.allowCrooKey ? "croo" : "croo");
   els.crooKey.value = "";
   els.mmError.hidden = true;
   els.payModal.hidden = false;
   setTimeout(() => {
-    if (state.allowCrooKey) els.crooKey.focus();
+    if (state.metamask.enabled) els.mmConnect.focus();
+    else if (state.allowCrooKey) els.crooKey.focus();
   }, 50);
 }
 
 /** Switch the active payment tab. */
 function setPayMethod(method) {
+  if (method === "croo" && !state.allowCrooKey) method = state.metamask.enabled ? "metamask" : "croo";
   state.payMethod = method;
   const onCroo = method === "croo";
   els.tabCroo.classList.toggle("tab--active", onCroo);
@@ -330,7 +335,7 @@ els.mmConnect.addEventListener("click", async () => {
   els.mmError.hidden = true;
   const eth = window.ethereum;
   if (!eth) {
-    showMmError("MetaMask not detected. Install it, or use the CROO agent tab.");
+    showMmError("MetaMask not detected. Install MetaMask to pay by wallet.");
     return;
   }
   try {
@@ -613,7 +618,7 @@ async function consumeSse(stream, handlers) {
 function showRetry(order) {
   els.status.hidden = false;
   const retry = h("div", { class: "report__actions" });
-  const btn = h("button", { class: "btn btn--primary", text: "Try another key", attrs: { type: "button" } });
+  const btn = h("button", { class: "btn btn--primary", text: "Try payment again", attrs: { type: "button" } });
   btn.addEventListener("click", () => openPayModal(order.tier, order.addresses));
   retry.appendChild(btn);
   els.status.appendChild(retry);
