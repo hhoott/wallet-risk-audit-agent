@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" role="img" aria-labelledby="title desc">
+  <title id="title">CROO Web3 Address Intel Agent logo</title>
+  <desc id="desc">A dark square service logo with a bright Web3 address graph, verified shield, and CROO wordmark.</desc>
+  <defs>
+    <linearGradient id="greenBlue" x1="263" y1="205" x2="976" y2="1011" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8cff55"/>
+      <stop offset="0.48" stop-color="#31f58f"/>
+      <stop offset="1" stop-color="#27a7ff"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="214" y1="126" x2="1043" y2="1113" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0d1912"/>
+      <stop offset="1" stop-color="#030504"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="45%" r="58%">
+      <stop offset="0" stop-color="#1cff82" stop-opacity="0.34"/>
+      <stop offset="0.55" stop-color="#1b8fff" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1254" height="1254" rx="212" fill="#050706"/>
+  <rect x="42" y="42" width="1170" height="1170" rx="178" fill="url(#panel)" stroke="#245435" stroke-width="8"/>
+  <circle cx="627" cy="528" r="500" fill="url(#halo)"/>
+
+  <g opacity="0.28" stroke="#285b3a" stroke-width="4" fill="none">
+    <path d="M172 374h244M838 374h244M144 513h280M830 513h280M152 652h262M840 652h262M196 791h232M826 791h232"/>
+    <path d="M349 246v204M904 246v204M265 574v224M989 574v224M414 840v155M839 840v155"/>
+  </g>
+
+  <path d="M627 167 930 281v253c0 267-128 449-303 544-175-95-303-277-303-544V281l303-114Z" fill="#08100c" stroke="url(#greenBlue)" stroke-width="30" stroke-linejoin="round"/>
+  <path d="M627 230 873 323v205c0 214-99 362-246 445-147-83-246-231-246-445V323l246-93Z" fill="#0b1710" stroke="#285b3a" stroke-width="8"/>
+
+  <g stroke="url(#greenBlue)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M456 572h126l67-102 76 204 72-102h109"/>
+    <path d="M520 719 604 802 762 613"/>
+  </g>
+
+  <g stroke="url(#greenBlue)" stroke-width="13" stroke-linejoin="round" fill="#102319">
+    <path d="M627 326 474 418v181l153 96 153-96V418l-153-92Z"/>
+    <path d="M474 418 627 514l153-96M627 514v181"/>
+  </g>
+
+  <g fill="#102319" stroke="#8cff55" stroke-width="11">
+    <circle cx="627" cy="326" r="39"/>
+    <circle cx="474" cy="418" r="36"/>
+    <circle cx="780" cy="418" r="36"/>
+    <circle cx="474" cy="599" r="36"/>
+    <circle cx="780" cy="599" r="36"/>
+    <circle cx="627" cy="695" r="39"/>
+  </g>
+
+  <g>
+    <circle cx="832" cy="335" r="70" fill="#08100c" stroke="#8cff55" stroke-width="14"/>
+    <path d="M797 337 822 362 869 307" fill="none" stroke="#8cff55" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g fill="#07100c" stroke="#27a7ff" stroke-width="9">
+    <circle cx="390" cy="377" r="20"/>
+    <circle cx="877" cy="773" r="20"/>
+    <circle cx="307" cy="690" r="16"/>
+    <circle cx="950" cy="521" r="16"/>
+  </g>
+  <g stroke="#27a7ff" stroke-width="6" stroke-linecap="round" opacity="0.82">
+    <path d="M390 377 474 418M780 599l97 174M307 690l167-91M780 418l170 103"/>
+  </g>
+
+  <text x="627" y="1110" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="118" font-weight="800" letter-spacing="14" fill="#f4fff7">CROO</text>
+  <path d="M489 1145h276" stroke="url(#greenBlue)" stroke-width="10" stroke-linecap="round"/>
+</svg>

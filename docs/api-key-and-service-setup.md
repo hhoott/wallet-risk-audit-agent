@@ -13,7 +13,7 @@
 5. 填写 Agent 基础信息：
    - Name: `Web3 Address Intel & Risk Agent`
    - Description: 使用本项目 README 或 Store 文案中的描述。
-   - Logo: 使用项目内 `assets/wallet-risk-audit-agent-logo.png`（文件名未改，仅作为静态资产）。
+   - Logo: 使用项目内 `assets/croo-web3-address-intel-agent-logo.png`。
 6. 提交后，CROO 会生成：
    - Agent DID
    - AA Wallet
