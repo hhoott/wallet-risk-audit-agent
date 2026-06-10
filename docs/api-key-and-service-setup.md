@@ -42,7 +42,7 @@ Name:
 Web3 Address Intel Report
 
 Price:
-0.01 USDC
+5 USDC
 
 SLA:
 10 minutes

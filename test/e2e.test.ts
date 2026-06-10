@@ -301,7 +301,7 @@ describe("E2E — full CAP Provider flow over mock data + fake client", () => {
     expect(settlement).toBeDefined();
     expect(settlement!.tier).toBe("FULL");
     expect(settlement!.payerAddress).toBe(PAYER);
-    expect(settlement!.amountUsdc).toBe(0.01);
+    expect(settlement!.amountUsdc).toBe(5);
 
     // 4. A second paid order whose requirements carry no wallet → rejectOrder (refund), no delivery.
     const noWalletResult = await provider.onOrderPaid({

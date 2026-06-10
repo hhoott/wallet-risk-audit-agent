@@ -307,7 +307,7 @@ Web3 Address Intel & Risk Agent 在 CROO Agent Protocol (CAP) 中扮演 **Provid
    → AcceptNegotiation(negotiationId)
    
 3. Requester 付费
-   PayOrder(orderId) → 0.01 USDC 锁入 CAPVault Escrow
+   PayOrder(orderId) → 5 USDC 锁入 CAPVault Escrow
    
 4. 我们的 Provider 收到 order_paid 事件
    → orchestrator.audit("full", ["0x123..."])
@@ -353,7 +353,7 @@ Web3 Address Intel & Risk Agent 在 CROO Agent Protocol (CAP) 中扮演 **Provid
    RejectOrder(orderId, "All data sources unavailable, cannot complete audit")
    
 8. CAPVault 退款
-   Escrow → 原路退还 Requester（0.01 USDC）
+   Escrow → 原路退还 Requester（5 USDC）
 ```
 
 ## 5. 关键设计原则

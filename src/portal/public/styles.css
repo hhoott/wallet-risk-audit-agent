@@ -344,9 +344,11 @@ a:hover {
 /* ── Tier cards ──────────────────────────────────────────────────────────── */
 .tiers {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
+  grid-template-columns: minmax(0, 520px);
+  justify-content: center;
   align-items: stretch;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 .tiers__loading {
@@ -358,7 +360,7 @@ a:hover {
 .tier-card {
   background: var(--white);
   border-radius: 18px;
-  padding: 32px 28px;
+  padding: 38px 44px 42px;
   display: flex;
   flex-direction: column;
   box-shadow: var(--card-shadow);
@@ -369,52 +371,56 @@ a:hover {
 }
 
 .tier-card__badge {
-  align-self: flex-start;
+  align-self: center;
   font-family: var(--font-text);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: -0.12px;
   color: var(--apple-blue);
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .tier-card__name {
   font-family: var(--font-display);
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 600;
   line-height: 1.16;
   letter-spacing: 0;
-  margin: 0 0 8px;
+  text-align: center;
+  margin: 0 0 18px;
 }
 
 .tier-card__price {
   font-family: var(--font-display);
-  font-size: 40px;
+  font-size: 56px;
   font-weight: 600;
   line-height: 1.1;
-  letter-spacing: -0.5px;
-  margin: 0 0 4px;
+  letter-spacing: 0;
+  text-align: center;
+  color: var(--near-black);
+  margin: 0 0 8px;
 }
 
 .tier-card__price small {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 400;
   color: var(--black-48);
-  letter-spacing: -0.374px;
+  letter-spacing: 0;
 }
 
 .tier-card__per {
   font-family: var(--font-text);
-  font-size: 14px;
+  font-size: 15px;
   color: var(--black-48);
-  letter-spacing: -0.224px;
-  margin: 0 0 20px;
+  letter-spacing: 0;
+  text-align: center;
+  margin: 0 0 28px;
 }
 
 .tier-card__list {
   list-style: none;
   padding: 0;
-  margin: 0 0 24px;
+  margin: 0 0 30px;
   flex: 1;
 }
 
@@ -442,12 +448,13 @@ a:hover {
   text-align: center;
   background: var(--apple-blue);
   color: var(--white);
-  padding: 10px 18px;
+  padding: 13px 22px;
   border-radius: 980px;
   font-size: 17px;
   cursor: pointer;
   border: none;
   font-family: var(--font-text);
+  width: 100%;
 }
 
 .tier-card__cta:hover {
@@ -467,6 +474,12 @@ a:hover {
     grid-template-columns: 1fr;
     max-width: 460px;
     margin: 0 auto;
+  }
+  .tier-card {
+    padding: 30px 28px 34px;
+  }
+  .tier-card__price {
+    font-size: 46px;
   }
 }
 

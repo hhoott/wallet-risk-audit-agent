@@ -27,7 +27,7 @@ export const DEFAULT_SERVICE_TIER: Tier = "FULL";
 /** Per-tier USDC pricing. Only FULL is exposed externally by the single CROO service. */
 export const TIER_PRICE_USDC: Record<Tier, number> = {
   QUICK: 0.5,
-  FULL: 0.01,
+  FULL: 5,
   MULTI: 5,
 };
 

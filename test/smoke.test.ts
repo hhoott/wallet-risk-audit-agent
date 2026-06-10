@@ -20,7 +20,7 @@ describe("toolchain smoke", () => {
 
   it("tier pricing is correct", () => {
     expect(TIER_PRICE_USDC.QUICK).toBe(0.5);
-    expect(TIER_PRICE_USDC.FULL).toBe(0.01);
+    expect(TIER_PRICE_USDC.FULL).toBe(5);
     expect(TIER_PRICE_USDC.MULTI).toBe(5);
   });
 

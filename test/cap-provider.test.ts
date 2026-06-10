@@ -335,7 +335,7 @@ describe("CAP Provider — order_paid delivery wiring", () => {
       expect(settlement).toBeDefined();
       expect(settlement!.tier).toBe("FULL");
       expect(settlement!.payerAddress).toBe(PAYER);
-      expect(settlement!.amountUsdc).toBe(0.01);
+      expect(settlement!.amountUsdc).toBe(5);
     } finally {
       await rm(resultDir, { recursive: true, force: true });
     }
@@ -367,7 +367,7 @@ describe("CAP Provider — order_paid delivery wiring", () => {
     // Multi-wallet structured report carries a walletCount and per-wallet reports.
     expect(parsed.walletCount).toBe(2);
     expect(Array.isArray(parsed.reports)).toBe(true);
-    expect(ledger.get("order-multi")!.amountUsdc).toBe(0.01);
+    expect(ledger.get("order-multi")!.amountUsdc).toBe(5);
   });
 
   it("uploads the report when it exceeds the upload threshold and embeds the object key", async () => {

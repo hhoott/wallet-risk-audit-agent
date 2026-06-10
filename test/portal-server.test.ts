@@ -167,7 +167,7 @@ describe("portal server — static + tiers", () => {
     expect(data.tiers).toHaveLength(1);
     expect(data.tiers[0].tier).toBe("FULL");
     expect(data.tiers[0].available).toBe(true);
-    expect(data.tiers[0].priceUsdc).toBe(0.01);
+    expect(data.tiers[0].priceUsdc).toBe(5);
   });
 
   it("GET / serves the HTML shell", async () => {
@@ -313,7 +313,7 @@ describe("portal server — paid mode (no key)", () => {
       expect(data.code).toBe("PAYMENT_REQUIRED");
       expect(data.payment).toBeTypeOf("object");
       expect(data.payment.method).toBe("metamask");
-      expect(data.payment.amountUsdc).toBe(0.01);
+      expect(data.payment.amountUsdc).toBe(5);
       expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
       expect(data.payment.chainId).toBe(8453);
     } finally {
@@ -334,7 +334,7 @@ describe("portal server — paid mode (no key)", () => {
       expect(data.code).toBe("PAYMENT_REQUIRED");
       expect(data.payment).toBeTypeOf("object");
       expect(data.payment.method).toBe("metamask");
-      expect(data.payment.amountUsdc).toBe(0.01);
+      expect(data.payment.amountUsdc).toBe(5);
       expect(data.payment.payeeAddress).toBe(cfg.payeeAddress);
     } finally {
       await srv.close();
@@ -383,7 +383,7 @@ describe("portal server — A2A orderId verification", () => {
       expect(data.paid).toBe(false);
       expect(data.payment.method).toBe("cap");
       expect(data.payment.status).toBe("created");
-      expect(data.payment.priceUsdc).toBe(0.01);
+      expect(data.payment.priceUsdc).toBe(5);
     } finally {
       await srv.close();
     }
@@ -408,7 +408,7 @@ describe("portal server — A2A orderId verification", () => {
       expect(data.payment.method).toBe("cap");
       expect(data.payment.orderId).toBe("ord-unpaid");
       expect(data.payment.status).toBe("created");
-      expect(data.payment.priceUsdc).toBe(0.01);
+      expect(data.payment.priceUsdc).toBe(5);
     } finally {
       await srv.close();
     }
@@ -603,7 +603,7 @@ describe("portal server — MetaMask payment", () => {
       verify: (txHash: string) =>
         Promise.resolve(
           txHash === goodHash
-            ? { paid: true, reason: "ok", amountUsdc: 0.01 }
+            ? { paid: true, reason: "ok", amountUsdc: 5 }
             : { paid: false, reason: "Insufficient USDC to our address." },
         ),
     };

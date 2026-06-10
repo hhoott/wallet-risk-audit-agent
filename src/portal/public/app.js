@@ -77,9 +77,10 @@ function shortAddr(addr) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-/** Format a USDC price (0.5 / 2 / 5). */
+/** Format a USDC price for display. */
 function formatPrice(n) {
-  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  const value = Number.isInteger(n) ? String(n) : n.toFixed(1);
+  return `$${value}`;
 }
 
 /** Escape user-derived strings before inserting as HTML. */

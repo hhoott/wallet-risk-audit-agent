@@ -137,7 +137,7 @@ describe("Payment_Gateway", () => {
             expect(decision.action).toBe("DELIVER_AND_SETTLE");
             if (decision.action === "DELIVER_AND_SETTLE") {
               expect(decision.amountUsdc).toBe(priceForTier(tier));
-              expect([0.5, 0.01, 5]).toContain(decision.amountUsdc);
+              expect([0.5, 5]).toContain(decision.amountUsdc);
             }
           } else {
             // Refund when all modules fail / are incomplete.
@@ -183,12 +183,12 @@ describe("Payment_Gateway", () => {
 
   // ── Unit tests ────────────────────────────────────────────────────────────────────────
 
-  it("price table: QUICK = 0.5, FULL = 0.01, MULTI = 5 USDC", () => {
+  it("price table: QUICK = 0.5, FULL = 5, MULTI = 5 USDC", () => {
     expect(priceForTier("QUICK")).toBe(0.5);
-    expect(priceForTier("FULL")).toBe(0.01);
+    expect(priceForTier("FULL")).toBe(5);
     expect(priceForTier("MULTI")).toBe(5);
     // Mirrors the config source of truth.
-    expect(TIER_PRICE_USDC).toEqual({ QUICK: 0.5, FULL: 0.01, MULTI: 5 });
+    expect(TIER_PRICE_USDC).toEqual({ QUICK: 0.5, FULL: 5, MULTI: 5 });
   });
 
   it("rejects negotiation for an unknown service id", () => {

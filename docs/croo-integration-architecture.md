@@ -84,7 +84,7 @@
 
 | Service 名称 | 价格 | SLA | 环境变量 |
 |------|------|-----|----------|
-| Web3 Address Intel Report | 0.01 USDC | 10 分钟 | `SERVICE_ID` |
+| Web3 Address Intel Report | 5 USDC | 10 分钟 | `SERVICE_ID` |
 
 **代码位置**：
 - `src/services.ts`：定义单个 Service 的元数据（描述、技能标签、交付 schema）
@@ -457,7 +457,7 @@ await provider.start();
 
 ### 3.3 三档服务的功能差异
 
-| 功能模块 | Quick (0.5 USDC) | Full (0.01 USDC) | Multi (5 USDC) |
+| 功能模块 | Quick (0.5 USDC) | Full (5 USDC) | Multi (5 USDC) |
 |---------|------------------|---------------|----------------|
 | 地址验证 | ✅ | ✅ | ✅（每个钱包） |
 | 授权扫描 | ✅ | ✅ | ✅（每个钱包） |
@@ -782,7 +782,7 @@ console.log("Loan approved with standard terms");
 
 **好处**：
 - 下游 Agent 无需自己实现钱包审计逻辑
-- 通过 CAP 雇用我们，按次付费（0.01 USDC）
+- 通过 CAP 雇用我们，按次付费（5 USDC）
 - 获得结构化报告，直接用于决策
 
 
@@ -830,7 +830,7 @@ npm start
 ```
 [cap] AddressIntelProvider started; listening for CAP events
 [cap] Accepted negotiation neg_abc123 (tier FULL)
-[cap] Delivered order ord_xyz789 (tier FULL); recorded settlement of 0.01 USDC
+[cap] Delivered order ord_xyz789 (tier FULL); recorded settlement of 5 USDC
 [cap] order_rejected: ord_def456
 ```
 
