@@ -17,6 +17,8 @@ const VARS = [
   { name: "CROO_SDK_KEY", required: true, manual: "H1-1 (register the Agent; shown once)", secret: true },
   { name: "SERVICE_ID", required: true, manual: "H1-2 (configure the single Address Intel Service)" },
   { name: "ETHERSCAN_API_KEY", required: true, manual: "H7-12 (Etherscan API key)", secret: true },
+  { name: "ETHERSCAN_BASE_URL", required: false, manual: "optional Etherscan-compatible API base URL / proxy" },
+  { name: "SOURCIFY_BASE_URL", required: false, manual: "optional Sourcify repository base URL for contract metadata fallback" },
   { name: "ETH_RPC_URL", required: false, manual: "H7-12 (Ethereum viem RPC URL; falls back to ALCHEMY_RPC_URL/public RPC)", secret: true },
   { name: "BASE_RPC_URL", required: false, manual: "H7-12 (Base viem RPC URL; falls back to public RPC)", secret: true },
   { name: "ARBITRUM_RPC_URL", required: false, manual: "H7-12 (Arbitrum viem RPC URL; falls back to public RPC)", secret: true },

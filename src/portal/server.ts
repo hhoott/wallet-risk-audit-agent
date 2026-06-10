@@ -546,7 +546,19 @@ async function handleVet(req: IncomingMessage, res: ServerResponse, ctx: ServerC
       sendJson(res, 502, { error: result.reason ?? "Address vetting failed." });
       return;
     }
-    sendJson(res, 200, { ok: true, chain: chainKey, intel: result.result, ai: result.ai });
+    const rawIntel = result.result as Record<string, unknown>;
+    const rawMeta =
+      typeof rawIntel.meta === "object" && rawIntel.meta !== null
+        ? (rawIntel.meta as Record<string, unknown>)
+        : {};
+    const intel = {
+      ...rawIntel,
+      meta: {
+        ...rawMeta,
+        txCount: rawMeta.txCount === Number.MAX_SAFE_INTEGER ? null : rawMeta.txCount,
+      },
+    };
+    sendJson(res, 200, { ok: true, chain: chainKey, intel, ai: result.ai });
   } catch (err) {
     ctx.logger.error(`Vet failed: ${err instanceof Error ? err.message : String(err)}`);
     sendJson(res, 500, { error: "Address vetting could not be completed." });

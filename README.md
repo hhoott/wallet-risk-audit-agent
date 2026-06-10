@@ -220,9 +220,16 @@ ETHERSCAN_API_KEY=<etherscan-key>
 ETH_RPC_URL=<ethereum-rpc-url>
 ```
 
+If the hosting region cannot reach `api.etherscan.io` directly, set
+`ETHERSCAN_BASE_URL` to an Etherscan-compatible proxy or gateway. Contract verification metadata
+also falls back to Sourcify (`SOURCIFY_BASE_URL`, default `https://repo.sourcify.dev/contracts`)
+when Etherscan is unavailable.
+
 Recommended data-source environment:
 
 ```env
+ETHERSCAN_BASE_URL=https://api.etherscan.io/v2/api
+SOURCIFY_BASE_URL=https://repo.sourcify.dev/contracts
 BASE_RPC_URL=<base-rpc-url>
 ARBITRUM_RPC_URL=<arbitrum-rpc-url>
 OPTIMISM_RPC_URL=<optimism-rpc-url>

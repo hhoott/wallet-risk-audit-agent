@@ -154,6 +154,11 @@ ETHERSCAN_API_KEY=your_etherscan_api_key
 
 注意：不要把真实 Etherscan Key 写入仓库文档或提交到 Git。
 
+如果部署地区无法直连 `api.etherscan.io`，可以额外配置
+`ETHERSCAN_BASE_URL` 指向 Etherscan 兼容代理/网关。合约验证元数据会在 Etherscan 不可达时
+自动 fallback 到 Sourcify，默认仓库地址为 `https://repo.sourcify.dev/contracts`，也可通过
+`SOURCIFY_BASE_URL` 覆盖。
+
 ## 5. 可选数据源配置
 
 ### 5.1 Alchemy / RPC URL

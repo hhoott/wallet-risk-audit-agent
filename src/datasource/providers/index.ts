@@ -12,6 +12,8 @@
  * Key injection: API keys and the audited-chain RPC URL are read from the environment (never
  * hard-coded). The expected environment variable names are:
  *   - ETHERSCAN_API_KEY  → Etherscan v2 API key.
+ *   - ETHERSCAN_BASE_URL → Optional Etherscan-compatible API base URL / proxy.
+ *   - SOURCIFY_BASE_URL  → Optional Sourcify repository base URL.
  *   - ALCHEMY_RPC_URL    → HTTP RPC URL for viem reads (Alchemy or any provider). Falls back to a
  *                          public keyless RPC when absent.
  *   - COINGECKO_API_KEY  → CoinGecko Demo/Pro key (optional; raises rate limits).
@@ -36,6 +38,7 @@ export {
   PERMIT2_ADDRESS,
   DEFAULT_ETH_RPC_URL,
   DEFAULT_ETHERSCAN_BASE_URL,
+  DEFAULT_SOURCIFY_BASE_URL,
 } from "./chain-etherscan.js";
 export {
   CoinGeckoPriceDataSource,
@@ -65,6 +68,10 @@ export interface DataProviders {
 export interface ProviderApiKeys {
   /** Etherscan v2 API key (env: ETHERSCAN_API_KEY). */
   etherscanApiKey?: string;
+  /** Optional Etherscan-compatible API base URL / proxy (env: ETHERSCAN_BASE_URL). */
+  etherscanBaseUrl?: string;
+  /** Optional Sourcify repository base URL (env: SOURCIFY_BASE_URL). */
+  sourcifyBaseUrl?: string;
   /** HTTP RPC URL for viem reads (env: ALCHEMY_RPC_URL). */
   ethRpcUrl?: string;
   /** CoinGecko API key (env: COINGECKO_API_KEY). */
@@ -85,6 +92,8 @@ export function loadProviderApiKeys(env: NodeJS.ProcessEnv = process.env): Provi
     coingeckoPro: env.COINGECKO_PRO === "true",
   };
   if (env.ETHERSCAN_API_KEY !== undefined) keys.etherscanApiKey = env.ETHERSCAN_API_KEY;
+  if (env.ETHERSCAN_BASE_URL !== undefined) keys.etherscanBaseUrl = env.ETHERSCAN_BASE_URL;
+  if (env.SOURCIFY_BASE_URL !== undefined) keys.sourcifyBaseUrl = env.SOURCIFY_BASE_URL;
   if (env.ALCHEMY_RPC_URL !== undefined) keys.ethRpcUrl = env.ALCHEMY_RPC_URL;
   if (env.COINGECKO_API_KEY !== undefined) keys.coingeckoApiKey = env.COINGECKO_API_KEY;
   return keys;
@@ -130,6 +139,8 @@ export function buildProvidersFromConfig(
 
   const chainSource = new EtherscanChainDataSource({
     etherscanApiKey: keys.etherscanApiKey ?? "",
+    etherscanBaseUrl: keys.etherscanBaseUrl,
+    sourcifyBaseUrl: keys.sourcifyBaseUrl,
     rpcUrl,
     chainId: chain.chainId,
     viemChain: chain.viemChain,

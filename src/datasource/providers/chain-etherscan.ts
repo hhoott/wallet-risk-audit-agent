@@ -87,6 +87,9 @@ export const DEFAULT_ETH_RPC_URL = "https://ethereum-rpc.publicnode.com";
 /** Default Etherscan v2 API base URL. */
 export const DEFAULT_ETHERSCAN_BASE_URL = "https://api.etherscan.io/v2/api";
 
+/** Default Sourcify repository base URL, used as a contract metadata fallback. */
+export const DEFAULT_SOURCIFY_BASE_URL = "https://repo.sourcify.dev/contracts";
+
 /** Sensible upper bound on rows mapped per list endpoint (mirrors the Transaction_Analyzer cap). */
 export const DEFAULT_MAX_RESULTS = 1000;
 
@@ -269,6 +272,17 @@ export function isVerifiedSource(sourceCode: string | undefined | null): boolean
   return typeof sourceCode === "string" && sourceCode.trim() !== "";
 }
 
+/** Extract a human-readable contract name from Sourcify metadata when Etherscan is unavailable. */
+function extractSourcifyContractName(metadata: SourcifyMetadata): string | null {
+  const targets = metadata.settings?.compilationTarget;
+  if (targets !== undefined) {
+    const names = Object.values(targets).filter((v) => typeof v === "string" && v.trim() !== "");
+    if (names.length > 0) return names[0].trim();
+  }
+  const title = metadata.output?.devdoc?.title;
+  return typeof title === "string" && title.trim() !== "" ? title.trim() : null;
+}
+
 // ── Approval event ABI (for log discovery + decoding) ───────────────────────────────────────
 
 /**
@@ -297,6 +311,8 @@ export interface EtherscanChainOptions {
   rpcUrl?: string;
   /** Override the Etherscan v2 base URL (for testing / self-hosted proxies). */
   etherscanBaseUrl?: string;
+  /** Override the Sourcify repository base URL (for testing / self-hosted mirrors). */
+  sourcifyBaseUrl?: string;
   /** Chain id (defaults to the audited chain, Ethereum Mainnet = 1). */
   chainId?: number;
   /** viem network object for read-only RPC calls (defaults to Ethereum mainnet). */
@@ -322,12 +338,25 @@ interface EtherscanEnvelope<T> {
   result: T;
 }
 
+interface SourcifyMetadata {
+  output?: {
+    abi?: unknown;
+    devdoc?: {
+      title?: unknown;
+    };
+  };
+  settings?: {
+    compilationTarget?: Record<string, string>;
+  };
+}
+
 /**
  * Real, read-only ChainDataSource backed by Etherscan v2 + viem.
  */
 export class EtherscanChainDataSource implements ChainDataSource {
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  private readonly sourcifyBaseUrl: string;
   private readonly chainId: number;
   private readonly retry: RetryPolicy | undefined;
   private readonly now: () => Date;
@@ -339,6 +368,7 @@ export class EtherscanChainDataSource implements ChainDataSource {
   constructor(options: EtherscanChainOptions) {
     this.apiKey = options.etherscanApiKey;
     this.baseUrl = options.etherscanBaseUrl ?? DEFAULT_ETHERSCAN_BASE_URL;
+    this.sourcifyBaseUrl = options.sourcifyBaseUrl ?? DEFAULT_SOURCIFY_BASE_URL;
     this.chainId = options.chainId ?? AUDITED_CHAIN_ID;
     this.retry = options.retry;
     this.now = options.now ?? ((): Date => new Date());
@@ -567,8 +597,9 @@ export class EtherscanChainDataSource implements ChainDataSource {
             : null;
       }
     } catch {
-      verified = false;
-      name = null;
+      const sourcify = await this.fetchSourcifyMetadata(addr);
+      verified = sourcify !== null;
+      name = sourcify === null ? null : extractSourcifyContractName(sourcify);
     }
 
     // deployedAt via getcontractcreation (creation tx) then the tx's block timestamp.
@@ -580,7 +611,9 @@ export class EtherscanChainDataSource implements ChainDataSource {
     }
 
     // txCount: Etherscan txlist count (capped) used as a pragmatic on-chain activity proxy.
-    let txCount = 0;
+    // When Etherscan is unreachable, use the existing "unknown/not applicable" sentinel so the
+    // risk layer does not treat a data-source outage as LOW_TX_COUNT.
+    let txCount = Number.MAX_SAFE_INTEGER;
     try {
       const txs = await this.fetchEtherscanList<EtherscanTxRow>({
         module: "account",
@@ -590,7 +623,7 @@ export class EtherscanChainDataSource implements ChainDataSource {
       });
       txCount = txs.length;
     } catch {
-      txCount = 0;
+      txCount = Number.MAX_SAFE_INTEGER;
     }
 
     return {
@@ -756,13 +789,21 @@ export class EtherscanChainDataSource implements ChainDataSource {
 
   /** Fetch the lowercased function names from a contract's verified ABI (Etherscan getabi). */
   private async fetchVerifiedFunctionNames(addr: string): Promise<string[]> {
-    const abiJson = await this.fetchEtherscanResult<string>({
-      module: "contract",
-      action: "getabi",
-      address: addr,
-    });
-    if (typeof abiJson !== "string" || abiJson === "Contract source code not verified") return [];
-    const parsed = JSON.parse(abiJson) as Array<{ type?: string; name?: string }>;
+    let parsed: Array<{ type?: string; name?: string }>;
+    try {
+      const abiJson = await this.fetchEtherscanResult<string>({
+        module: "contract",
+        action: "getabi",
+        address: addr,
+      });
+      if (typeof abiJson !== "string" || abiJson === "Contract source code not verified") return [];
+      parsed = JSON.parse(abiJson) as Array<{ type?: string; name?: string }>;
+    } catch {
+      const sourcify = await this.fetchSourcifyMetadata(addr);
+      const abi = sourcify?.output?.abi;
+      if (!Array.isArray(abi)) return [];
+      parsed = abi as Array<{ type?: string; name?: string }>;
+    }
     return parsed
       .filter((e) => e.type === "function" && typeof e.name === "string")
       .map((e) => (e.name as string).toLowerCase());
@@ -928,6 +969,25 @@ export class EtherscanChainDataSource implements ChainDataSource {
   }
 
   // ── Etherscan REST helpers ───────────────────────────────────────────────────────────────────
+
+  /** Fetch Sourcify full_match, then partial_match metadata as a best-effort verification fallback. */
+  private async fetchSourcifyMetadata(addr: Address): Promise<SourcifyMetadata | null> {
+    for (const match of ["full_match", "partial_match"] as const) {
+      try {
+        const url = `${this.sourcifyBaseUrl}/${match}/${this.chainId}/${addr}/metadata.json`;
+        const metadata = await this.run(async () => {
+          const res = await this.fetchImpl(url);
+          if (res.status === 404) return null;
+          if (!res.ok) throw new Error(`Sourcify HTTP ${res.status}`);
+          return (await res.json()) as SourcifyMetadata;
+        }, `sourcify.${match}.metadata`);
+        if (metadata !== null) return metadata;
+      } catch {
+        /* try the next match type, then fall back to unavailable */
+      }
+    }
+    return null;
+  }
 
   /** Build a fully-qualified Etherscan v2 URL with the injected chainid + api key. */
   private buildUrl(params: Record<string, string>): string {

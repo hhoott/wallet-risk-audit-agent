@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 
 import {
+  EtherscanChainDataSource,
   windowDaysToStartTimestamp,
   unixSecondsToIso,
   computeGasFeeWei,
@@ -40,6 +41,7 @@ import {
   type RiskListEntry,
 } from "../src/datasource/providers/risk-rules.js";
 import type { Address } from "../src/models.js";
+import type { ContractFunctionParameters, PublicClient } from "viem";
 
 // ── Generators ─────────────────────────────────────────────────────
 
@@ -223,6 +225,80 @@ describe("chain-etherscan — isVerifiedSource", () => {
     expect(isVerifiedSource("   ")).toBe(false);
     expect(isVerifiedSource(undefined)).toBe(false);
     expect(isVerifiedSource(null)).toBe(false);
+  });
+});
+
+describe("chain-etherscan — Sourcify fallback", () => {
+  const CONTRACT = "0xE592427A0AEce92De3Edee1F18E0157C05861564" as Address;
+  const metadata = {
+    settings: {
+      compilationTarget: {
+        "contracts/SwapRouter.sol": "SwapRouter",
+      },
+    },
+    output: {
+      abi: [
+        { type: "function", name: "exactInputSingle" },
+        { type: "function", name: "mint" },
+      ],
+    },
+  };
+
+  function fakeFetch(input: string | URL | Request): Promise<Response> {
+    const url = typeof input === "string" ? input : input.toString();
+    if (url.includes("etherscan.local")) return Promise.reject(new Error("blocked"));
+    if (url.includes("/full_match/")) return Promise.resolve(new Response("{}", { status: 404 }));
+    if (url.includes("/partial_match/")) {
+      return Promise.resolve(
+        new Response(JSON.stringify(metadata), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    return Promise.resolve(new Response("{}", { status: 404 }));
+  }
+
+  const publicClient = {
+    getCode: async () => "0x6080604052",
+    readContract: async (params: ContractFunctionParameters) => {
+      if (params.functionName === "owner" || params.functionName === "getOwner") {
+        throw new Error("no owner");
+      }
+      throw new Error("not implemented");
+    },
+  } as unknown as PublicClient;
+
+  it("marks contract metadata verified from Sourcify when Etherscan is unreachable", async () => {
+    const ds = new EtherscanChainDataSource({
+      etherscanApiKey: "",
+      etherscanBaseUrl: "https://etherscan.local/api",
+      sourcifyBaseUrl: "https://sourcify.local/contracts",
+      publicClient,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+
+    const meta = await ds.getContractMeta(CONTRACT);
+
+    expect(meta.isContract).toBe(true);
+    expect(meta.verified).toBe(true);
+    expect(meta.name).toBe("SwapRouter");
+    expect(meta.deployedAt).toBeNull();
+    expect(meta.txCount).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it("uses Sourcify ABI as a fallback for token risk flags", async () => {
+    const ds = new EtherscanChainDataSource({
+      etherscanApiKey: "",
+      etherscanBaseUrl: "https://etherscan.local/api",
+      sourcifyBaseUrl: "https://sourcify.local/contracts",
+      publicClient,
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+    });
+
+    const info = await ds.getTokenContractInfo(CONTRACT);
+
+    expect(info.mintable).toBe(true);
   });
 });
 
