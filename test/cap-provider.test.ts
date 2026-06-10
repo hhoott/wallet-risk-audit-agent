@@ -240,7 +240,10 @@ describe("CAP Provider — negotiation handler wiring", () => {
   it("rejects a negotiation when wallet parameters are missing, with a reason", async () => {
     const client = new FakeCapClient({
       negotiations: {
-        "neg-3": { serviceId: "svc-address-intel", requirements: JSON.stringify({ walletAddresses: [] }) },
+        "neg-3": {
+          serviceId: "svc-address-intel",
+          requirements: JSON.stringify({ walletAddresses: [] }),
+        },
       },
     });
 

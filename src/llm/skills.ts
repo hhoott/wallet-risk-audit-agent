@@ -106,7 +106,9 @@ function isLlmAddressVerdict(value: unknown): value is LlmAddressVerdict {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : undefined;
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function readPath(value: unknown, path: readonly string[]): unknown {
@@ -167,7 +169,9 @@ function evidenceGateOfficialVerdict(
       "Official label was not applied because the evidence log lacks an explicit official-source signal for this address.",
       ...verdict.reasons.filter((reason) => !/widely|documented|known public figure/i.test(reason)),
     ],
-    evidenceUsed: verdict.evidenceUsed.filter((item) => !/widely|documented|known public figure/i.test(item)),
+    evidenceUsed: verdict.evidenceUsed.filter(
+      (item) => !/widely|documented|known public figure/i.test(item),
+    ),
   };
 }
 

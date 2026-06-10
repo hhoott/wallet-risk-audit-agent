@@ -259,7 +259,9 @@ describe("parseDelivery", () => {
     };
     const parsed = parseDelivery({ deliverableSchema: JSON.stringify(structured) });
     expect((parsed as AuditReportStructured).walletAddress).toBe(WALLET);
-    expect(extractResultPageUrl(parsed)).toBe("https://intel.say2agent.com/report?file=order-1.json");
+    expect(extractResultPageUrl(parsed)).toBe(
+      "https://intel.say2agent.com/report?file=order-1.json",
+    );
   });
 
   it("parses a multi-wallet report", () => {

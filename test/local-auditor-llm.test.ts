@@ -110,8 +110,14 @@ class FakeRunner implements AuditRunner {
     });
   }
 
-  auditMultipleWallets(): Promise<{ multi: { schemaVersion: string; walletCount: number; reports: AuditReportStructured[] }; perWallet: [] }> {
-    return Promise.resolve({ multi: { schemaVersion: "1.0.0", walletCount: 0, reports: [] }, perWallet: [] });
+  auditMultipleWallets(): Promise<{
+    multi: { schemaVersion: string; walletCount: number; reports: AuditReportStructured[] };
+    perWallet: [];
+  }> {
+    return Promise.resolve({
+      multi: { schemaVersion: "1.0.0", walletCount: 0, reports: [] },
+      perWallet: [],
+    });
   }
 
   inspectAddress(): Promise<AddressInspection> {

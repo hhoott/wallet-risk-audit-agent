@@ -159,7 +159,11 @@ function appendProviderLog(level: "info" | "warn" | "error", message: string): v
   try {
     const dir = join(process.cwd(), RESULT_DIR_NAME);
     mkdirSync(dir, { recursive: true });
-    appendFileSync(join(dir, "provider.log"), `[${new Date().toISOString()}] [${level}] ${message}\n`, "utf8");
+    appendFileSync(
+      join(dir, "provider.log"),
+      `[${new Date().toISOString()}] [${level}] ${message}\n`,
+      "utf8",
+    );
   } catch {
     /* Logging to file is best-effort and must never break the Provider. */
   }
@@ -208,7 +212,8 @@ export function classifyError(err: unknown): string {
   if (isInsufficientBalance(err)) return "insufficient-balance";
   if (isNotFound(err)) return "not-found";
   if (isUnauthorized(err)) return "unauthorized";
-  if (err instanceof APIError) return `api-error(code=${err.code},status=${err.httpStatus},msg=${err.message})`;
+  if (err instanceof APIError)
+    return `api-error(code=${err.code},status=${err.httpStatus},msg=${err.message})`;
   if (err instanceof Error) return err.message;
   return String(err);
 }
@@ -408,7 +413,12 @@ async function enrichA2aWithLlm(
           ? orchestrator.walletActivity(address)
           : Promise.resolve(undefined),
       ]);
-      const evidenceLog = buildA2aEvidenceLog(deliverable.structured, address, inspection, activity);
+      const evidenceLog = buildA2aEvidenceLog(
+        deliverable.structured,
+        address,
+        inspection,
+        activity,
+      );
       const aiVerdict = await skills.classifyAddressEvidence(evidenceLog);
       const standing = applyA2aStanding(deliverable.structured, address, inspection, aiVerdict);
       entries.push({ address, standing, evidenceLog, aiVerdict });
@@ -628,11 +638,7 @@ export async function handleOrderPaid(
             },
           ],
         };
-        const filePath = await writeResultJson(
-          fileName,
-          storedPayload,
-          ctx.resultStore,
-        );
+        const filePath = await writeResultJson(fileName, storedPayload, ctx.resultStore);
         logger.info(`Saved result JSON for order ${orderId}: ${filePath}`);
       }
 

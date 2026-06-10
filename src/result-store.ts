@@ -42,7 +42,10 @@ export function resultDir(options: ResultStoreOptions = {}): string {
 }
 
 export function sanitizeResultFileName(name: string): string {
-  const safe = name.trim().replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
+  const safe = name
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
   return safe.length > 0 ? safe : `report-${Date.now()}`;
 }
 
@@ -97,7 +100,9 @@ export async function readStoredReport(
   fileName: string,
   options: ResultStoreOptions = {},
 ): Promise<StoredReportPayload> {
-  return JSON.parse((await readResultJson(fileName, options)).toString("utf8")) as StoredReportPayload;
+  return JSON.parse(
+    (await readResultJson(fileName, options)).toString("utf8"),
+  ) as StoredReportPayload;
 }
 
 export async function latestResultFileName(

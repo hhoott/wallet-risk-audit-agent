@@ -215,7 +215,9 @@ export function parseDelivery(
 }
 
 /** Extract the optional human-clickable report page URL delivered by the Provider. */
-export function extractResultPageUrl(parsed: AuditReportStructured | MultiWalletReport): string | undefined {
+export function extractResultPageUrl(
+  parsed: AuditReportStructured | MultiWalletReport,
+): string | undefined {
   const value = (parsed as unknown as Record<string, unknown>).resultPageUrl;
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
@@ -320,7 +322,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   const wallet = argv[0] ?? process.env.CROO_AUDIT_WALLET;
 
   if (serviceId === undefined || serviceId.trim().length === 0) {
-    throw new Error("Set CROO_TARGET_SERVICE_ID to the Service_ID of the Address Intel Agent to hire.");
+    throw new Error(
+      "Set CROO_TARGET_SERVICE_ID to the Service_ID of the Address Intel Agent to hire.",
+    );
   }
   if (wallet === undefined || wallet.trim().length === 0) {
     throw new Error(

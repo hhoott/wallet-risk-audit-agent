@@ -55,7 +55,11 @@ export const SERVICE_CATALOG: Partial<Record<Tier, ServiceMetadata>> = {
  */
 export const DELIVERABLE_SCHEMA_FIELDS: { name: string; type: string; description: string }[] = [
   { name: "schemaVersion", type: "string", description: "Structured report schema version." },
-  { name: "walletAddress", type: "address", description: "The audited address / counterparty address." },
+  {
+    name: "walletAddress",
+    type: "address",
+    description: "The audited address / counterparty address.",
+  },
   { name: "auditedChain", type: "string", description: "Audited chain display name." },
   { name: "generatedAt", type: "string", description: "Report generation time (UTC ISO-8601)." },
   { name: "tier", type: "string", description: "Internal analysis depth for the single Service." },

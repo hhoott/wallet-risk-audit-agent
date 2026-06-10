@@ -264,9 +264,9 @@ describe("portal server — tier highlights / AI gating", () => {
     const full = data.tiers.find((t: { tier: string }) => t.tier === "FULL");
     expect(full.highlights.some((h: string) => h.startsWith("AI "))).toBe(false);
     // Real, always-on capabilities are still advertised.
-    expect(full.highlights.some((h: string) => h.includes("Annotated transaction counterparties"))).toBe(
-      true,
-    );
+    expect(
+      full.highlights.some((h: string) => h.includes("Annotated transaction counterparties")),
+    ).toBe(true);
   });
 
   it("includes AI highlights and reports aiEnabled=true when an LLM is configured", async () => {

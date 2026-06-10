@@ -59,46 +59,50 @@ class JsonModel implements ChatModel {
   lastUser = "";
   complete(_systemPrompt: string, userPrompt: string): Promise<string> {
     this.lastUser = userPrompt;
-    return Promise.resolve(JSON.stringify({
-      address: WALLET,
-      verdict: "DANGEROUS",
-      riskLevel: "CRITICAL",
-      badge: {
-        level: "DANGEROUS",
-        label: "Dangerous",
-        description: "High-risk evidence found.",
-      },
-      official: false,
-      blacklisted: true,
-      confidence: "HIGH",
-      reasons: ["Evidence log shows a high-risk approval."],
-      approvalRisks: ["Unlimited approval to unknown spender."],
-      transactionRisks: [],
-      evidenceUsed: ["auditEvidence.approvals[0]"],
-    }));
+    return Promise.resolve(
+      JSON.stringify({
+        address: WALLET,
+        verdict: "DANGEROUS",
+        riskLevel: "CRITICAL",
+        badge: {
+          level: "DANGEROUS",
+          label: "Dangerous",
+          description: "High-risk evidence found.",
+        },
+        official: false,
+        blacklisted: true,
+        confidence: "HIGH",
+        reasons: ["Evidence log shows a high-risk approval."],
+        approvalRisks: ["Unlimited approval to unknown spender."],
+        transactionRisks: [],
+        evidenceUsed: ["auditEvidence.approvals[0]"],
+      }),
+    );
   }
 }
 
 class UnsupportedOfficialModel implements ChatModel {
   complete(): Promise<string> {
-    return Promise.resolve(JSON.stringify({
-      address: WALLET,
-      verdict: "OFFICIAL",
-      riskLevel: "LOW",
-      badge: {
-        level: "OFFICIAL",
+    return Promise.resolve(
+      JSON.stringify({
+        address: WALLET,
+        verdict: "OFFICIAL",
+        riskLevel: "LOW",
+        badge: {
+          level: "OFFICIAL",
+          label: "Famous wallet",
+          description: "Model memory says this is famous.",
+        },
+        official: true,
+        blacklisted: false,
         label: "Famous wallet",
-        description: "Model memory says this is famous.",
-      },
-      official: true,
-      blacklisted: false,
-      label: "Famous wallet",
-      confidence: "HIGH",
-      reasons: ["This is a widely documented public figure address."],
-      approvalRisks: [],
-      transactionRisks: [],
-      evidenceUsed: ["model memory"],
-    }));
+        confidence: "HIGH",
+        reasons: ["This is a widely documented public figure address."],
+        approvalRisks: [],
+        transactionRisks: [],
+        evidenceUsed: ["model memory"],
+      }),
+    );
   }
 }
 

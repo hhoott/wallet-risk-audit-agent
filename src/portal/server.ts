@@ -44,10 +44,7 @@ import {
 import { MetaMaskPaymentVerifier, BASE_USDC_ADDRESS } from "./metamask-payment.js";
 import { DeliverableType } from "@croo-network/sdk";
 import { type CapClient, extractTxHash } from "../cap/provider.js";
-import {
-  readResultJson,
-  type ResultStoreOptions,
-} from "../result-store.js";
+import { readResultJson, type ResultStoreOptions } from "../result-store.js";
 
 const TIER_ORDER: readonly Tier[] = [DEFAULT_SERVICE_TIER];
 
@@ -142,7 +139,9 @@ async function sendResultFile(
     res.end(data);
   } catch (err) {
     const unsafe = err instanceof Error && err.message.startsWith("Unsafe result file name");
-    sendJson(res, unsafe ? 400 : 404, { error: unsafe ? "Invalid result file" : "Result not found" });
+    sendJson(res, unsafe ? 400 : 404, {
+      error: unsafe ? "Invalid result file" : "Result not found",
+    });
   }
 }
 

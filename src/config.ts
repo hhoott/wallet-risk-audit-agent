@@ -90,7 +90,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     rpcUrl: env.RPC_URL,
     // SERVICE_ID is the current single-service config. SERVICE_ID_FULL is accepted as a legacy
     // fallback so old demo env files continue to start while the dashboard is migrated.
-    serviceId: env.SERVICE_ID ?? env.SERVICE_ID_FULL ?? env.SERVICE_ID_QUICK ?? env.SERVICE_ID_MULTI,
+    serviceId:
+      env.SERVICE_ID ?? env.SERVICE_ID_FULL ?? env.SERVICE_ID_QUICK ?? env.SERVICE_ID_MULTI,
   };
 }
 

@@ -78,7 +78,8 @@ export function loadPortalConfig(env: NodeJS.ProcessEnv = process.env): PortalCo
     (env.PORTAL_PAYMENT_MODE ?? "").trim().toLowerCase() === "paid" ? "paid" : "free";
 
   const serviceIds: Partial<Record<Tier, string>> = {};
-  const serviceId = env.SERVICE_ID ?? env.SERVICE_ID_FULL ?? env.SERVICE_ID_QUICK ?? env.SERVICE_ID_MULTI;
+  const serviceId =
+    env.SERVICE_ID ?? env.SERVICE_ID_FULL ?? env.SERVICE_ID_QUICK ?? env.SERVICE_ID_MULTI;
   if (serviceId) serviceIds[DEFAULT_SERVICE_TIER] = serviceId;
 
   const orderTimeoutMs = Number.parseInt(env.PORTAL_ORDER_TIMEOUT_MS ?? "", 10);

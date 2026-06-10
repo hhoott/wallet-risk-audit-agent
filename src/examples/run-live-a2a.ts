@@ -38,10 +38,7 @@ function parseArgs(argv: string[]): CliArgs {
   return {
     dryRun,
     resultFile,
-    wallet:
-      wallet ??
-      process.env.CROO_AUDIT_WALLET ??
-      "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    wallet: wallet ?? process.env.CROO_AUDIT_WALLET ?? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
   };
 }
 
@@ -61,7 +58,9 @@ function setupRequesterLog(dryRun: boolean): { path: string; close(): void } {
   const stream = createWriteStream(path, { flags: "a" });
 
   const format = (args: unknown[]): string =>
-    args.map((arg) => (typeof arg === "string" ? arg : inspect(arg, { depth: 8, colors: false }))).join(" ");
+    args
+      .map((arg) => (typeof arg === "string" ? arg : inspect(arg, { depth: 8, colors: false })))
+      .join(" ");
   const wrap = <T extends (...args: unknown[]) => void>(fn: T, level: string): T =>
     ((...args: unknown[]) => {
       stream.write(`[${new Date().toISOString()}] [${level}] ${format(args)}\n`);
@@ -91,7 +90,9 @@ function printReportUrl(resultPageUrl: string | undefined): void {
 async function runDryRun(args: CliArgs): Promise<void> {
   const fileName = args.resultFile ?? (await latestResultFileName());
   if (fileName === undefined) {
-    throw new Error("No saved result found. Run one live A2A test first, or pass --result-file <file>.json.");
+    throw new Error(
+      "No saved result found. Run one live A2A test first, or pass --result-file <file>.json.",
+    );
   }
   const saved = await readStoredReport(fileName);
   const waitMs = Number.parseInt(process.env.CROO_A2A_DRY_RUN_DELAY_MS ?? "450", 10);
@@ -205,7 +206,9 @@ async function runTest(args: CliArgs): Promise<void> {
 
   for (let attempt = 1; attempt <= ORDER_CREATION_ATTEMPTS; attempt++) {
     await delay(2000);
-    console.info(`[requester] Polling for order (attempt ${attempt}/${ORDER_CREATION_ATTEMPTS})...`);
+    console.info(
+      `[requester] Polling for order (attempt ${attempt}/${ORDER_CREATION_ATTEMPTS})...`,
+    );
     const orders = await client.listOrders({ role: "buyer", pageSize: 20 });
     const match = orders.find((o) => o.negotiationId === negId);
     if (match) {
@@ -225,7 +228,9 @@ async function runTest(args: CliArgs): Promise<void> {
   }
 
   // Step 3: Pay the order
-  console.info(`[requester] Step 3: Paying order ${orderId} (price comes from the CROO service config)...`);
+  console.info(
+    `[requester] Step 3: Paying order ${orderId} (price comes from the CROO service config)...`,
+  );
   const payResult = await client.payOrder(orderId);
   console.info(`[requester] Payment successful. payTxHash: ${payResult.txHash}`);
 
