@@ -116,7 +116,10 @@
 
             <div class="field">
               <label class="field__label field__label--dark" for="chain-select">Chain</label>
-              <select class="field__input" id="chain-select" name="chain" required></select>
+              <div class="chain-select">
+                <span class="chain-select__icon" id="chain-icon" aria-hidden="true"></span>
+                <select class="field__input chain-select__input" id="chain-select" name="chain" required></select>
+              </div>
               <p class="field__hint">Read-only across EVM chains (Etherscan V2).</p>
             </div>
 

@@ -18,6 +18,7 @@ const els = {
   tiersLoading: document.getElementById("tiers-loading"),
   tierSelect: document.getElementById("tier-select"),
   chainSelect: document.getElementById("chain-select"),
+  chainIcon: document.getElementById("chain-icon"),
   form: document.getElementById("order-form"),
   wallet: document.getElementById("wallet-input"),
   walletLabel: document.getElementById("wallet-label"),
@@ -92,6 +93,24 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
+const CHAIN_LOGOS = {
+  ethereum:
+    '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#f2f4f8"/><path d="M16 4.5 8.5 16.4 16 20.8l7.5-4.4L16 4.5Z" fill="#627eea"/><path d="M16 22.2 8.5 17.8 16 27.5l7.5-9.7-7.5 4.4Z" fill="#3c3c3d"/></svg>',
+  base:
+    '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#0052ff"/><path d="M16.2 25.6c5.3 0 9.6-4.3 9.6-9.6s-4.3-9.6-9.6-9.6c-5 0-9.1 3.8-9.5 8.7h12.7v1.8H6.7c.5 4.9 4.5 8.7 9.5 8.7Z" fill="#fff"/></svg>',
+  arbitrum:
+    '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2.5 27.8 9.3v13.4L16 29.5 4.2 22.7V9.3L16 2.5Z" fill="#213147"/><path d="m11.8 22.4 2.1 1.2 7.6-12.2-2.1-1.2-7.6 12.2Z" fill="#28a0f0"/><path d="m16.2 24.9 2 1.2 7.6-12.2-2.1-1.2-7.5 12.2Z" fill="#96bedc"/><path d="m7.5 19.9 2.1 1.2 7.6-12.2-2.1-1.2-7.6 12.2Z" fill="#fff"/></svg>',
+  optimism:
+    '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#ff0420"/><path d="M8.2 17.4c0-3.1 2.3-5.2 5.4-5.2s5.4 2.1 5.4 5.2-2.3 5.2-5.4 5.2-5.4-2.1-5.4-5.2Zm7.6 0c0-1.6-.8-2.6-2.2-2.6s-2.2 1-2.2 2.6.8 2.6 2.2 2.6 2.2-1 2.2-2.6Zm4.6-4.9h3.3c2.4 0 4.1 1.3 4.1 3.5s-1.7 3.5-4.1 3.5h-.6v2.8h-2.7v-9.8Zm3.1 4.7c.9 0 1.4-.4 1.4-1.2s-.5-1.2-1.4-1.2h-.4v2.4h.4Z" fill="#fff"/></svg>',
+  polygon:
+    '<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="16" fill="#8247e5"/><path d="m20.4 11.2-4.1 2.4-2.8-1.6-4.1 2.4v4.7l4.1 2.4 2.8-1.6 2.8 1.6 4.1-2.4v-4.7l-2.8-1.6v-1.6Zm0 3.2 1.4.8v3.1l-2.7 1.6-2.8-1.6-2.8 1.6-2.7-1.6v-3.1l2.7-1.6 2.8 1.6 4.1-2.4v1.6Z" fill="#fff"/></svg>',
+};
+
+function syncChainIcon() {
+  if (!els.chainIcon || !els.chainSelect) return;
+  els.chainIcon.innerHTML = CHAIN_LOGOS[els.chainSelect.value] ?? CHAIN_LOGOS.ethereum;
+}
+
 // ── Service loading & rendering ─────────────────────────────────────────────
 
 async function loadTiers() {
@@ -143,6 +162,7 @@ function renderChains() {
     els.chainSelect.appendChild(opt);
   }
   els.chainSelect.value = state.defaultChain;
+  syncChainIcon();
 }
 
 /** Reveal the AI scope note only when an LLM is actually configured (don't promise AI we can't do). */
@@ -260,6 +280,7 @@ els.form.addEventListener("submit", (e) => {
 });
 
 els.tierSelect.addEventListener("change", syncWalletFieldForTier);
+if (els.chainSelect) els.chainSelect.addEventListener("change", syncChainIcon);
 
 // ── Payment modal ─────────────────────────────────────────────────────────────
 
