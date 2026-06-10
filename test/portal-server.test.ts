@@ -691,6 +691,35 @@ describe("portal server — MetaMask payment", () => {
       const data = await (await fetch(`${srv.base}/api/tiers`)).json();
       expect(data.metamask.enabled).toBe(true);
       expect(data.metamask.chainId).toBe(8453);
+      expect(data.allowCrooKey).toBe(false);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("/api/tiers disables the CROO-key web checkout when MetaMask is configured", async () => {
+    const server = createPortalServer({
+      config: {
+        ...config("paid", true, true),
+        payeeAddress: "0x" + "1".repeat(40),
+      },
+      auditor: new FakeAuditor(),
+      paymentVerifier: verifier("0xgood"),
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    });
+    const srv = await new Promise<{ base: string; close: () => Promise<void> }>((resolve) => {
+      server.listen(0, () => {
+        const { port } = server.address() as AddressInfo;
+        resolve({
+          base: `http://127.0.0.1:${port}`,
+          close: () => new Promise<void>((r) => server.close(() => r())),
+        });
+      });
+    });
+    try {
+      const data = await (await fetch(`${srv.base}/api/tiers`)).json();
+      expect(data.metamask.enabled).toBe(true);
+      expect(data.allowCrooKey).toBe(false);
     } finally {
       await srv.close();
     }

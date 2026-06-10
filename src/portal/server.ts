@@ -212,7 +212,8 @@ function buildTiersPayload(config: PortalConfig, aiEnabled: boolean): unknown {
     defaultChain: "ethereum",
     paymentMode: config.paymentMode,
     // Whether the web UI may show the "pay with a CROO agent key" tab (demo capability).
-    allowCrooKey: config.allowCrooKey,
+    // MetaMask is the preferred public web checkout; when configured, hide the CROO key path.
+    allowCrooKey: config.allowCrooKey && config.payeeAddress === undefined,
     // MetaMask direct-transfer payment info (present only when a payee is configured).
     metamask: config.payeeAddress
       ? {
